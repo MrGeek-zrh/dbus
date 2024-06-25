@@ -4,7 +4,7 @@
 mkdir build
 cd build
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_C_FLAGS="-pg" -DCMAKE_CXX_FLAGS="-pg" ..
-make
+make -j$(nproc)
 cp compile_commands.json ..
 ```
 ```
