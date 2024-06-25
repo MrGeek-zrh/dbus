@@ -51,3 +51,5 @@ tags
 /compile_commands.json
 /doc
 /test
+.cache
+build
