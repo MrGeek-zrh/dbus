@@ -47,3 +47,7 @@ Makefile
 Makefile.in
 cscope.out
 tags
+.cache
+/compile_commands.json
+/doc
+/test
