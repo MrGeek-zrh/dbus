@@ -352,30 +352,21 @@ int main(int argc, char **argv)
     BusContextFlags flags;
     void *ready_event_handle;
 
+    // 在 Unix 系统上,重定向标准输入/输出/错误流
 #ifdef DBUS_UNIX
     const char *error_str;
 
-    /* Redirect stdin from /dev/null since we will never need it, and
-   * redirect stdout and stderr to /dev/null if not already open.
-   *
-   * We should do this as the very first thing, to ensure that when we
-   * create other file descriptors (for example for epoll, inotify or
-   * a socket), they never get assigned as fd 0, 1 or 2. If they were,
-   * which could happen if our caller had (incorrectly) closed those
-   * standard fds, they'd get closed when we daemonize - for example,
-   * closing our listening socket would stop us listening, and closing
-   * a Linux epoll socket would cause the main loop to fail. */
     if (!_dbus_ensure_standard_fds(DBUS_FORCE_STDIN_NULL, &error_str)) {
         fprintf(stderr, "dbus-daemon: fatal error setting up standard fds: %s: %s\n", error_str, _dbus_strerror(errno));
         return 1;
     }
 
-    /* Set all fds >= 3 close-on-execute. We don't want activated services
-   * to inherit fds we might have inherited from our caller. */
+    // 设置所有文件描述符为 close-on-exec,防止继承不需要的文件描述符
     _dbus_fd_set_all_close_on_exec();
 #endif
     ready_event_handle = NULL;
 
+    // 初始化配置文件路径、地址字符串等
     if (!_dbus_string_init(&config_file))
         return 1;
 
@@ -398,6 +389,7 @@ int main(int argc, char **argv)
     while (i < argc) {
         const char *arg = argv[i];
 
+        // 解析命令行参数
         if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0 || strcmp(arg, "-?") == 0) {
             usage();
         } else if (strcmp(arg, "--version") == 0) {
@@ -453,7 +445,7 @@ int main(int argc, char **argv)
             if (!_dbus_string_append(&config_file, arg))
                 exit(1);
         } else if (strcmp(arg, "--config-file") == 0) {
-            /* wait for next arg */
+            // 等待下一个参数
         } else if (strstr(arg, "--address=") == arg) {
             const char *file;
 
@@ -470,7 +462,7 @@ int main(int argc, char **argv)
             if (!_dbus_string_append(&address, arg))
                 exit(1);
         } else if (strcmp(arg, "--address") == 0) {
-            /* wait for next arg */
+            // 等待下一个参数
         } else if (strstr(arg, "--print-address=") == arg) {
             const char *desc;
 
@@ -491,7 +483,7 @@ int main(int argc, char **argv)
 
             print_address = TRUE;
         } else if (strcmp(arg, "--print-address") == 0) {
-            print_address = TRUE; /* and we'll get the next arg if appropriate */
+            print_address = TRUE; // 等待下一个参数
         } else if (strstr(arg, "--print-pid=") == arg) {
             const char *desc;
 
@@ -512,7 +504,7 @@ int main(int argc, char **argv)
 
             print_pid = TRUE;
         } else if (strcmp(arg, "--print-pid") == 0) {
-            print_pid = TRUE; /* and we'll get the next arg if appropriate */
+            print_pid = TRUE; // 等待下一个参数
         }
 #ifdef DBUS_WIN
         else if (strstr(arg, "--ready-event-handle=") == arg) {
@@ -535,11 +527,13 @@ int main(int argc, char **argv)
         ++i;
     }
 
+    // 检查配置文件路径是否有效
     if (_dbus_string_get_length(&config_file) == 0) {
         fprintf(stderr, "No configuration file specified.\n");
         usage();
     }
 
+    // 初始化用于打印地址和 PID 的管道
     _dbus_pipe_invalidate(&print_addr_pipe);
     if (print_address) {
         _dbus_pipe_init_stdout(&print_addr_pipe);
@@ -574,6 +568,7 @@ int main(int argc, char **argv)
     }
     _dbus_string_free(&pid_fd);
 
+    // 初始化 SELinux 和 AppArmor
     if (!bus_selinux_pre_init()) {
         _dbus_warn("SELinux pre-initialization failed");
         exit(1);
@@ -584,7 +579,9 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    // 初始化错误对象
     dbus_error_init(&error);
+    // 创建 BusContext 对象
     context = bus_context_new(&config_file, flags, &print_addr_pipe, &print_pid_pipe, ready_event_handle,
                               _dbus_string_get_length(&address) > 0 ? &address : NULL, &error);
     _dbus_string_free(&config_file);
@@ -595,16 +592,11 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /* bus_context_new() closes the print_addr_pipe and
-   * print_pid_pipe
-   */
+    // bus_context_new() 会关闭 print_addr_pipe 和 print_pid_pipe
 
 #ifdef DBUS_UNIX
+    // 在 Unix 系统上,设置信号处理器
     setup_reload_pipe(bus_context_get_loop(context));
-
-    /* POSIX signals are Unix-specific, and _dbus_set_signal_handler is
-   * unimplemented (and probably unimplementable) on Windows, so there's
-   * no point in trying to make the handler portable to non-Unix. */
 
     _dbus_set_signal_handler(SIGTERM, signal_handler);
     _dbus_set_signal_handler(SIGHUP, signal_handler);
@@ -612,8 +604,11 @@ int main(int argc, char **argv)
 
     _dbus_verbose("We are on D-Bus...\n");
     _dbus_daemon_report_ready();
+    // 进入 D-Bus 主循环
+    // 这里似乎是有一个默认的最大循环次数的, 1000000000 应该是这个数值
     _dbus_loop_run(bus_context_get_loop(context));
 
+    // 清理和退出
     bus_context_shutdown(context);
     bus_context_unref(context);
     bus_selinux_shutdown();

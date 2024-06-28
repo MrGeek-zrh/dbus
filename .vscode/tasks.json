@@ -1,0 +1,36 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-dbus",
+            "type": "shell",
+            "command": "bash ${workspaceRoot}/scripts/build.sh"
+        },
+        {
+            "label": "restart-dbus",
+            "type": "shell",
+            "command": "bash ${workspaceRoot}/scripts/check.sh"
+        },
+        {
+            "label": "print_dbus_daemon_pid",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/get_dbus_daemon_pid.sh"
+        },
+        {
+            "label": "rebuild-dbus",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "build-dbus",
+                "restart-dbus",
+                "print_dbus_daemon_pid"
+            ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}
