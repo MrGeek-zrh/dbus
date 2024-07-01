@@ -78,8 +78,16 @@ typedef enum {
  */
 typedef enum {
     DBUS_DISPATCH_DATA_REMAINS, /**< There is more data to potentially convert to messages. */
+    // 还有更多的数据可以转换为消息。这表示当前处理的消息已经完成，
+    // 但仍有剩余的数据需要进一步转换成消息并继续处理。
+
     DBUS_DISPATCH_COMPLETE, /**< All currently available data has been processed. */
+    // 当前可用的所有数据都已处理完毕。这表示连接中的所有消息都已处理完，
+    // 连接处于空闲状态，直到新的数据到达。
+
     DBUS_DISPATCH_NEED_MEMORY /**< More memory is needed to continue. */
+    // 需要更多的内存才能继续。这表示在处理消息时遇到了内存不足的问题，
+    // 需要分配更多的内存才能继续处理。这通常是一个错误状态，表明系统资源不足。
 } DBusDispatchStatus;
 
 /** Called when libdbus needs a new watch to be monitored by the main

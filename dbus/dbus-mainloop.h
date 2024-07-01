@@ -30,41 +30,30 @@
 
 typedef struct DBusLoop DBusLoop;
 
-typedef dbus_bool_t (* DBusWatchFunction)   (DBusWatch     *watch,
-                                             unsigned int   condition,
-                                             void          *data);
+typedef dbus_bool_t (*DBusWatchFunction)(DBusWatch *watch, unsigned int condition, void *data);
 
-DBusLoop*   _dbus_loop_new            (void);
-DBusLoop*   _dbus_loop_ref            (DBusLoop            *loop);
-void        _dbus_loop_unref          (DBusLoop            *loop);
-dbus_bool_t _dbus_loop_add_watch      (DBusLoop            *loop,
-                                       DBusWatch           *watch);
-void        _dbus_loop_remove_watch   (DBusLoop            *loop,
-                                       DBusWatch           *watch);
-void        _dbus_loop_toggle_watch   (DBusLoop            *loop,
-                                       DBusWatch           *watch);
-dbus_bool_t _dbus_loop_add_timeout    (DBusLoop            *loop,
-                                       DBusTimeout         *timeout);
-void        _dbus_loop_remove_timeout (DBusLoop            *loop,
-                                       DBusTimeout         *timeout);
+DBusLoop *_dbus_loop_new(void);
+DBusLoop *_dbus_loop_ref(DBusLoop *loop);
+void _dbus_loop_unref(DBusLoop *loop);
+dbus_bool_t _dbus_loop_add_watch(DBusLoop *loop, DBusWatch *watch);
+void _dbus_loop_remove_watch(DBusLoop *loop, DBusWatch *watch);
+void _dbus_loop_toggle_watch(DBusLoop *loop, DBusWatch *watch);
+dbus_bool_t _dbus_loop_add_timeout(DBusLoop *loop, DBusTimeout *timeout);
+void _dbus_loop_remove_timeout(DBusLoop *loop, DBusTimeout *timeout);
 
-dbus_bool_t _dbus_loop_queue_dispatch (DBusLoop            *loop,
-                                       DBusConnection      *connection);
+dbus_bool_t _dbus_loop_queue_dispatch(DBusLoop *loop, DBusConnection *connection);
 
-void        _dbus_loop_run            (DBusLoop            *loop);
-void        _dbus_loop_quit           (DBusLoop            *loop);
-dbus_bool_t _dbus_loop_iterate        (DBusLoop            *loop,
-                                       dbus_bool_t          block);
-dbus_bool_t _dbus_loop_dispatch       (DBusLoop            *loop);
+void _dbus_loop_run(DBusLoop *loop);
+void _dbus_loop_quit(DBusLoop *loop);
+dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block);
+dbus_bool_t _dbus_loop_dispatch(DBusLoop *loop);
 
-int  _dbus_get_oom_wait    (void);
-void _dbus_wait_for_memory (void);
+int _dbus_get_oom_wait(void);
+void _dbus_wait_for_memory(void);
 
-static inline void
-_dbus_clear_loop (DBusLoop **pointer_to_loop)
+static inline void _dbus_clear_loop(DBusLoop **pointer_to_loop)
 {
-  _dbus_clear_pointer_impl (DBusLoop, pointer_to_loop,
-                            _dbus_loop_unref);
+    _dbus_clear_pointer_impl(DBusLoop, pointer_to_loop, _dbus_loop_unref);
 }
 
 #endif /* !DOXYGEN_SHOULD_SKIP_THIS */

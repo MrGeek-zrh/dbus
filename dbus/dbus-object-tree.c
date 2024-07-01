@@ -46,21 +46,21 @@
 /** Subnode of the object hierarchy */
 typedef struct DBusObjectSubtree DBusObjectSubtree;
 
-static DBusObjectSubtree* _dbus_object_subtree_new   (const char                  *name,
-                                                      const DBusObjectPathVTable  *vtable,
-                                                      void                        *user_data);
-static DBusObjectSubtree* _dbus_object_subtree_ref   (DBusObjectSubtree           *subtree);
-static void               _dbus_object_subtree_unref (DBusObjectSubtree           *subtree);
+static DBusObjectSubtree *_dbus_object_subtree_new(const char *name, const DBusObjectPathVTable *vtable,
+                                                   void *user_data);
+static DBusObjectSubtree *_dbus_object_subtree_ref(DBusObjectSubtree *subtree);
+static void _dbus_object_subtree_unref(DBusObjectSubtree *subtree);
 
 /**
  * Internals of DBusObjectTree
  */
-struct DBusObjectTree
-{
-  int                 refcount;   /**< Reference count */
-  DBusConnection     *connection; /**< Connection this tree belongs to */
+struct DBusObjectTree {
+    int refcount; /**< Reference count */
+    // 这是一个引用计数器。在 D-Bus 中，很多对象都使用引用计数来管理内存。当引用计数降到 0 时，对象会被销毁。
 
-  DBusObjectSubtree  *root;       /**< Root of the tree ("/" node) */
+    DBusConnection *connection; /**< Connection this tree belongs to */
+
+    DBusObjectSubtree *root; /**< Root of the tree ("/" node) */
 };
 
 /**
@@ -68,18 +68,18 @@ struct DBusObjectTree
  * that's a parent of a registered subtree handler. If
  * message_function != NULL there's actually a handler at this node.
  */
-struct DBusObjectSubtree
-{
-  DBusAtomic                         refcount;            /**< Reference count */
-  DBusObjectSubtree                 *parent;              /**< Parent node */
-  DBusObjectPathUnregisterFunction   unregister_function; /**< Function to call on unregister */
-  DBusObjectPathMessageFunction      message_function;    /**< Function to handle messages */
-  void                              *user_data;           /**< Data for functions */
-  DBusObjectSubtree                **subtrees;            /**< Child nodes */
-  int                                n_subtrees;          /**< Number of child nodes */
-  int                                max_subtrees;        /**< Number of allocated entries in subtrees */
-  unsigned int                       invoke_as_fallback : 1; /**< Whether to invoke message_function when child nodes don't handle the message */
-  char                               name[1]; /**< Allocated as large as necessary */
+struct DBusObjectSubtree {
+    DBusAtomic refcount; /**< Reference count */
+    DBusObjectSubtree *parent; /**< Parent node */
+    DBusObjectPathUnregisterFunction unregister_function; /**< Function to call on unregister */
+    DBusObjectPathMessageFunction message_function; /**< Function to handle messages */
+    void *user_data; /**< Data for functions */
+    DBusObjectSubtree **subtrees; /**< Child nodes */
+    int n_subtrees; /**< Number of child nodes */
+    int max_subtrees; /**< Number of allocated entries in subtrees */
+    unsigned int
+            invoke_as_fallback : 1; /**< Whether to invoke message_function when child nodes don't handle the message */
+    char name[1]; /**< Allocated as large as necessary */
 };
 
 /**
@@ -89,36 +89,51 @@ struct DBusObjectSubtree
  * @param connection the connection this tree belongs to
  * @returns the new tree or #NULL if no memory
  */
-DBusObjectTree*
-_dbus_object_tree_new (DBusConnection *connection)
+/**
+ * @brief 创建一个新的 DBusObjectTree 对象
+ *
+ * 这个函数用于创建一个新的 DBusObjectTree 对象，并将其与给定的 DBusConnection 关联。
+ *
+ * @param connection 指向 DBusConnection 对象的指针
+ * @returns 如果成功创建对象树，返回指向 DBusObjectTree 的指针；否则返回 NULL
+ */
+DBusObjectTree *_dbus_object_tree_new(DBusConnection *connection)
 {
-  DBusObjectTree *tree;
+    DBusObjectTree *tree;
 
-  /* the connection passed in here isn't fully constructed,
+    /* the connection passed in here isn't fully constructed,
    * so don't do anything more than store a pointer to
    * it
    */
+    // 此时传入的 connection 尚未完全构造，因此只存储其指针
 
-  tree = dbus_new0 (DBusObjectTree, 1);
-  if (tree == NULL)
-    goto oom;
+    // 分配并初始化 DBusObjectTree 对象
+    tree = dbus_new0(DBusObjectTree, 1);
+    if (tree == NULL)
+        goto oom;
 
-  tree->refcount = 1;
-  tree->connection = connection;
-  tree->root = _dbus_object_subtree_new ("/", NULL, NULL);
-  if (tree->root == NULL)
-    goto oom;
-  tree->root->invoke_as_fallback = TRUE;
-  
-  return tree;
+    // 初始化引用计数和连接指针
+    tree->refcount = 1;
+    tree->connection = connection;
 
- oom:
-  if (tree)
-    {
-      dbus_free (tree);
+    // 创建根子树，并将其路径设置为 "/"
+    tree->root = _dbus_object_subtree_new("/", NULL, NULL);
+    if (tree->root == NULL)
+        goto oom;
+
+    // 将根子树标记为 fallback 调用
+    tree->root->invoke_as_fallback = TRUE;
+
+    // 返回成功创建的对象树
+    return tree;
+
+oom:
+    // 错误处理，释放已分配的资源
+    if (tree) {
+        dbus_free(tree);
     }
 
-  return NULL;
+    return NULL;
 }
 
 /**
@@ -126,32 +141,29 @@ _dbus_object_tree_new (DBusConnection *connection)
  * @param tree the object tree
  * @returns the object tree
  */
-DBusObjectTree *
-_dbus_object_tree_ref (DBusObjectTree *tree)
+DBusObjectTree *_dbus_object_tree_ref(DBusObjectTree *tree)
 {
-  _dbus_assert (tree->refcount > 0);
+    _dbus_assert(tree->refcount > 0);
 
-  tree->refcount += 1;
+    tree->refcount += 1;
 
-  return tree;
+    return tree;
 }
 
 /**
  * Decrement the reference count
  * @param tree the object tree
  */
-void
-_dbus_object_tree_unref (DBusObjectTree *tree)
+void _dbus_object_tree_unref(DBusObjectTree *tree)
 {
-  _dbus_assert (tree->refcount > 0);
+    _dbus_assert(tree->refcount > 0);
 
-  tree->refcount -= 1;
+    tree->refcount -= 1;
 
-  if (tree->refcount == 0)
-    {
-      _dbus_object_tree_free_all_unlocked (tree);
+    if (tree->refcount == 0) {
+        _dbus_object_tree_free_all_unlocked(tree);
 
-      dbus_free (tree);
+        dbus_free(tree);
     }
 }
 
@@ -160,223 +172,175 @@ _dbus_object_tree_unref (DBusObjectTree *tree)
  */
 #define VERBOSE_FIND 0
 
-static DBusObjectSubtree*
-find_subtree_recurse (DBusObjectSubtree  *subtree,
-                      const char        **path,
-                      dbus_bool_t         create_if_not_found,
-                      int                *index_in_parent,
-                      dbus_bool_t        *exact_match)
+static DBusObjectSubtree *find_subtree_recurse(DBusObjectSubtree *subtree, const char **path,
+                                               dbus_bool_t create_if_not_found, int *index_in_parent,
+                                               dbus_bool_t *exact_match)
 {
-  int i, j;
-  dbus_bool_t return_deepest_match;
+    int i, j;
+    dbus_bool_t return_deepest_match;
 
-  return_deepest_match = exact_match != NULL;
+    return_deepest_match = exact_match != NULL;
 
-  _dbus_assert (!(return_deepest_match && create_if_not_found));
+    _dbus_assert(!(return_deepest_match && create_if_not_found));
 
-  if (path[0] == NULL)
-    {
+    if (path[0] == NULL) {
 #if VERBOSE_FIND
-      _dbus_verbose ("  path exhausted, returning %s\n",
-                     subtree->name);
+        _dbus_verbose("  path exhausted, returning %s\n", subtree->name);
 #endif
-      if (exact_match != NULL)
-	*exact_match = TRUE;
-      return subtree;
+        if (exact_match != NULL)
+            *exact_match = TRUE;
+        return subtree;
     }
 
 #if VERBOSE_FIND
-  _dbus_verbose ("  searching children of %s for %s\n",
-                 subtree->name, path[0]);
+    _dbus_verbose("  searching children of %s for %s\n", subtree->name, path[0]);
 #endif
-  
-  i = 0;
-  j = subtree->n_subtrees;
-  while (i < j)
-    {
-      int k, v;
 
-      k = (i + j) / 2;
-      v = strcmp (path[0], subtree->subtrees[k]->name);
+    i = 0;
+    j = subtree->n_subtrees;
+    while (i < j) {
+        int k, v;
+
+        k = (i + j) / 2;
+        v = strcmp(path[0], subtree->subtrees[k]->name);
 
 #if VERBOSE_FIND
-      _dbus_verbose ("  %s cmp %s = %d\n",
-                     path[0], subtree->subtrees[k]->name,
-                     v);
+        _dbus_verbose("  %s cmp %s = %d\n", path[0], subtree->subtrees[k]->name, v);
 #endif
-      
-      if (v == 0)
-        {
-          if (index_in_parent)
-            {
+
+        if (v == 0) {
+            if (index_in_parent) {
 #if VERBOSE_FIND
-              _dbus_verbose ("  storing parent index %d\n", k);
+                _dbus_verbose("  storing parent index %d\n", k);
 #endif
-              *index_in_parent = k;
+                *index_in_parent = k;
             }
 
-          if (return_deepest_match)
-            {
-              DBusObjectSubtree *next;
+            if (return_deepest_match) {
+                DBusObjectSubtree *next;
 
-              next = find_subtree_recurse (subtree->subtrees[k],
-                                           &path[1], create_if_not_found, 
-                                           index_in_parent, exact_match);
-              if (next == NULL &&
-                  subtree->invoke_as_fallback)
-                {
+                next = find_subtree_recurse(subtree->subtrees[k], &path[1], create_if_not_found, index_in_parent,
+                                            exact_match);
+                if (next == NULL && subtree->invoke_as_fallback) {
 #if VERBOSE_FIND
-                  _dbus_verbose ("  no deeper match found, returning %s\n",
-                                 subtree->name);
+                    _dbus_verbose("  no deeper match found, returning %s\n", subtree->name);
 #endif
-		  if (exact_match != NULL)
-		    *exact_match = FALSE;
-                  return subtree;
-                }
-              else
-                return next;
-            }
-          else
-            return find_subtree_recurse (subtree->subtrees[k],
-                                         &path[1], create_if_not_found, 
-                                         index_in_parent, exact_match);
-        }
-      else if (v < 0)
-        {
-          j = k;
-        }
-      else
-        {
-          i = k + 1;
+                    if (exact_match != NULL)
+                        *exact_match = FALSE;
+                    return subtree;
+                } else
+                    return next;
+            } else
+                return find_subtree_recurse(subtree->subtrees[k], &path[1], create_if_not_found, index_in_parent,
+                                            exact_match);
+        } else if (v < 0) {
+            j = k;
+        } else {
+            i = k + 1;
         }
     }
 
 #if VERBOSE_FIND
-  _dbus_verbose ("  no match found, current tree %s, create_if_not_found = %d\n",
-                 subtree->name, create_if_not_found);
+    _dbus_verbose("  no match found, current tree %s, create_if_not_found = %d\n", subtree->name, create_if_not_found);
 #endif
-  
-  if (create_if_not_found)
-    {
-      DBusObjectSubtree* child;
-      int child_pos, new_n_subtrees;
+
+    if (create_if_not_found) {
+        DBusObjectSubtree *child;
+        int child_pos, new_n_subtrees;
 
 #if VERBOSE_FIND
-      _dbus_verbose ("  creating subtree %s\n",
-                     path[0]);
+        _dbus_verbose("  creating subtree %s\n", path[0]);
 #endif
-      
-      child = _dbus_object_subtree_new (path[0],
-                                        NULL, NULL);
-      if (child == NULL)
-        return NULL;
 
-      new_n_subtrees = subtree->n_subtrees + 1;
-      if (new_n_subtrees > subtree->max_subtrees)
-        {
-          int new_max_subtrees;
-          DBusObjectSubtree **new_subtrees;
+        child = _dbus_object_subtree_new(path[0], NULL, NULL);
+        if (child == NULL)
+            return NULL;
 
-          new_max_subtrees = subtree->max_subtrees == 0 ? 1 : 2 * subtree->max_subtrees;
-          new_subtrees = dbus_realloc (subtree->subtrees,
-                                       new_max_subtrees * sizeof (DBusObjectSubtree*));
-          if (new_subtrees == NULL)
-            {
-              _dbus_object_subtree_unref (child);
-              return NULL;
+        new_n_subtrees = subtree->n_subtrees + 1;
+        if (new_n_subtrees > subtree->max_subtrees) {
+            int new_max_subtrees;
+            DBusObjectSubtree **new_subtrees;
+
+            new_max_subtrees = subtree->max_subtrees == 0 ? 1 : 2 * subtree->max_subtrees;
+            new_subtrees = dbus_realloc(subtree->subtrees, new_max_subtrees * sizeof(DBusObjectSubtree *));
+            if (new_subtrees == NULL) {
+                _dbus_object_subtree_unref(child);
+                return NULL;
             }
-          subtree->subtrees = new_subtrees;
-          subtree->max_subtrees = new_max_subtrees;
+            subtree->subtrees = new_subtrees;
+            subtree->max_subtrees = new_max_subtrees;
         }
 
-      /* The binary search failed, so i == j points to the 
+        /* The binary search failed, so i == j points to the 
          place the child should be inserted. */
-      child_pos = i;
-      _dbus_assert (child_pos < new_n_subtrees &&
-                    new_n_subtrees <= subtree->max_subtrees);
-      if (child_pos + 1 < new_n_subtrees)
-	{
-	  memmove (&subtree->subtrees[child_pos+1], 
-		   &subtree->subtrees[child_pos], 
-		   (new_n_subtrees - child_pos - 1) * 
-		   sizeof subtree->subtrees[0]);
-	}
-      subtree->subtrees[child_pos] = child;
+        child_pos = i;
+        _dbus_assert(child_pos < new_n_subtrees && new_n_subtrees <= subtree->max_subtrees);
+        if (child_pos + 1 < new_n_subtrees) {
+            memmove(&subtree->subtrees[child_pos + 1], &subtree->subtrees[child_pos],
+                    (new_n_subtrees - child_pos - 1) * sizeof subtree->subtrees[0]);
+        }
+        subtree->subtrees[child_pos] = child;
 
-      if (index_in_parent)
-        *index_in_parent = child_pos;
-      subtree->n_subtrees = new_n_subtrees;
-      child->parent = subtree;
+        if (index_in_parent)
+            *index_in_parent = child_pos;
+        subtree->n_subtrees = new_n_subtrees;
+        child->parent = subtree;
 
-      return find_subtree_recurse (child,
-                                   &path[1], create_if_not_found, 
-                                   index_in_parent, exact_match);
-    }
-  else
-    {
-      if (exact_match != NULL)
-	*exact_match = FALSE;
-      return (return_deepest_match && subtree->invoke_as_fallback) ? subtree : NULL;
+        return find_subtree_recurse(child, &path[1], create_if_not_found, index_in_parent, exact_match);
+    } else {
+        if (exact_match != NULL)
+            *exact_match = FALSE;
+        return (return_deepest_match && subtree->invoke_as_fallback) ? subtree : NULL;
     }
 }
 
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-static DBusObjectSubtree*
-find_subtree (DBusObjectTree *tree,
-              const char    **path,
-              int            *index_in_parent)
+static DBusObjectSubtree *find_subtree(DBusObjectTree *tree, const char **path, int *index_in_parent)
 {
-  DBusObjectSubtree *subtree;
+    DBusObjectSubtree *subtree;
 
 #if VERBOSE_FIND
-  _dbus_verbose ("Looking for exact registered subtree\n");
+    _dbus_verbose("Looking for exact registered subtree\n");
 #endif
-  
-  subtree = find_subtree_recurse (tree->root, path, FALSE, index_in_parent, NULL);
 
-  if (subtree && subtree->message_function == NULL)
-    return NULL;
-  else
-    return subtree;
+    subtree = find_subtree_recurse(tree->root, path, FALSE, index_in_parent, NULL);
+
+    if (subtree && subtree->message_function == NULL)
+        return NULL;
+    else
+        return subtree;
 }
 #endif
 
-static DBusObjectSubtree*
-lookup_subtree (DBusObjectTree *tree,
-                const char    **path)
+static DBusObjectSubtree *lookup_subtree(DBusObjectTree *tree, const char **path)
 {
 #if VERBOSE_FIND
-  _dbus_verbose ("Looking for subtree\n");
+    _dbus_verbose("Looking for subtree\n");
 #endif
-  return find_subtree_recurse (tree->root, path, FALSE, NULL, NULL);
+    return find_subtree_recurse(tree->root, path, FALSE, NULL, NULL);
 }
 
-static DBusObjectSubtree*
-find_handler (DBusObjectTree *tree,
-              const char    **path,
-              dbus_bool_t    *exact_match)
+static DBusObjectSubtree *find_handler(DBusObjectTree *tree, const char **path, dbus_bool_t *exact_match)
 {
 #if VERBOSE_FIND
-  _dbus_verbose ("Looking for deepest handler\n");
+    _dbus_verbose("Looking for deepest handler\n");
 #endif
-  _dbus_assert (exact_match != NULL);
+    _dbus_assert(exact_match != NULL);
 
-  *exact_match = FALSE; /* ensure always initialized */
-  
-  return find_subtree_recurse (tree->root, path, FALSE, NULL, exact_match);
+    *exact_match = FALSE; /* ensure always initialized */
+
+    return find_subtree_recurse(tree->root, path, FALSE, NULL, exact_match);
 }
 
-static DBusObjectSubtree*
-ensure_subtree (DBusObjectTree *tree,
-                const char    **path)
+static DBusObjectSubtree *ensure_subtree(DBusObjectTree *tree, const char **path)
 {
 #if VERBOSE_FIND
-  _dbus_verbose ("Ensuring subtree\n");
+    _dbus_verbose("Ensuring subtree\n");
 #endif
-  return find_subtree_recurse (tree->root, path, TRUE, NULL, NULL);
+    return find_subtree_recurse(tree->root, path, TRUE, NULL, NULL);
 }
 
-static char *flatten_path (const char **path);
+static char *flatten_path(const char **path);
 
 /**
  * Registers a new subtree in the global object tree.
@@ -390,50 +354,40 @@ static char *flatten_path (const char **path);
  * @returns #FALSE if an error (#DBUS_ERROR_NO_MEMORY or
  *    #DBUS_ERROR_OBJECT_PATH_IN_USE) is reported
  */
-dbus_bool_t
-_dbus_object_tree_register (DBusObjectTree              *tree,
-                            dbus_bool_t                  fallback,
-                            const char                 **path,
-                            const DBusObjectPathVTable  *vtable,
-                            void                        *user_data,
-                            DBusError                   *error)
+dbus_bool_t _dbus_object_tree_register(DBusObjectTree *tree, dbus_bool_t fallback, const char **path,
+                                       const DBusObjectPathVTable *vtable, void *user_data, DBusError *error)
 {
-  DBusObjectSubtree  *subtree;
+    DBusObjectSubtree *subtree;
 
-  _dbus_assert (tree != NULL);
-  _dbus_assert (vtable->message_function != NULL);
-  _dbus_assert (path != NULL);
+    _dbus_assert(tree != NULL);
+    _dbus_assert(vtable->message_function != NULL);
+    _dbus_assert(path != NULL);
 
-  subtree = ensure_subtree (tree, path);
-  if (subtree == NULL)
-    {
-      _DBUS_SET_OOM (error);
-      return FALSE;
+    subtree = ensure_subtree(tree, path);
+    if (subtree == NULL) {
+        _DBUS_SET_OOM(error);
+        return FALSE;
     }
 
-  if (subtree->message_function != NULL)
-    {
-      if (error != NULL)
-        {
-          char *complete_path = flatten_path (path);
+    if (subtree->message_function != NULL) {
+        if (error != NULL) {
+            char *complete_path = flatten_path(path);
 
-          dbus_set_error (error, DBUS_ERROR_OBJECT_PATH_IN_USE,
-                          "A handler is already registered for %s",
-                          complete_path ? complete_path
-                                        : "(cannot represent path: out of memory!)");
+            dbus_set_error(error, DBUS_ERROR_OBJECT_PATH_IN_USE, "A handler is already registered for %s",
+                           complete_path ? complete_path : "(cannot represent path: out of memory!)");
 
-          dbus_free (complete_path);
+            dbus_free(complete_path);
         }
 
-      return FALSE;
+        return FALSE;
     }
 
-  subtree->message_function = vtable->message_function;
-  subtree->unregister_function = vtable->unregister_function;
-  subtree->user_data = user_data;
-  subtree->invoke_as_fallback = fallback != FALSE;
+    subtree->message_function = vtable->message_function;
+    subtree->unregister_function = vtable->unregister_function;
+    subtree->user_data = user_data;
+    subtree->invoke_as_fallback = fallback != FALSE;
 
-  return TRUE;
+    return TRUE;
 }
 
 /**
@@ -447,37 +401,32 @@ _dbus_object_tree_register (DBusObjectTree              *tree,
  * @param user_data_out stores subtree's user_data
  * @return #FALSE if the subtree was not registered, #TRUE on success
  */
-static dbus_bool_t
-unregister_subtree (DBusObjectSubtree                 *subtree,
-                    DBusObjectPathUnregisterFunction  *unregister_function_out,
-                    void                             **user_data_out)
+static dbus_bool_t unregister_subtree(DBusObjectSubtree *subtree,
+                                      DBusObjectPathUnregisterFunction *unregister_function_out, void **user_data_out)
 {
-  _dbus_assert (subtree != NULL);
-  _dbus_assert (unregister_function_out != NULL);
-  _dbus_assert (user_data_out != NULL);
+    _dbus_assert(subtree != NULL);
+    _dbus_assert(unregister_function_out != NULL);
+    _dbus_assert(user_data_out != NULL);
 
-  /* Confirm subtree is registered */
-  if (subtree->message_function != NULL)
-    {
-      subtree->message_function = NULL;
+    /* Confirm subtree is registered */
+    if (subtree->message_function != NULL) {
+        subtree->message_function = NULL;
 
-      *unregister_function_out = subtree->unregister_function;
-      *user_data_out = subtree->user_data;
+        *unregister_function_out = subtree->unregister_function;
+        *user_data_out = subtree->user_data;
 
-      subtree->unregister_function = NULL;
-      subtree->user_data = NULL;
+        subtree->unregister_function = NULL;
+        subtree->user_data = NULL;
 
-      return TRUE;
-    }
-  else
-    {
-      /* Assert that this unregistered subtree is either the root node or has
+        return TRUE;
+    } else {
+        /* Assert that this unregistered subtree is either the root node or has
          children, otherwise we have a dangling path which should never
          happen */
-      _dbus_assert (subtree->parent == NULL || subtree->n_subtrees > 0);
+        _dbus_assert(subtree->parent == NULL || subtree->n_subtrees > 0);
 
-      /* The subtree is not registered */
-      return FALSE;
+        /* The subtree is not registered */
+        return FALSE;
     }
 }
 
@@ -492,39 +441,34 @@ unregister_subtree (DBusObjectSubtree                 *subtree,
  * @param child_index parent->subtrees index of child to remove
  * @return #TRUE if removal and free succeed, #FALSE otherwise
  */
-static dbus_bool_t
-attempt_child_removal (DBusObjectSubtree  *parent,
-                       int child_index)
+static dbus_bool_t attempt_child_removal(DBusObjectSubtree *parent, int child_index)
 {
-  /* Candidate for removal */
-  DBusObjectSubtree* candidate;
+    /* Candidate for removal */
+    DBusObjectSubtree *candidate;
 
-  _dbus_assert (parent != NULL);
-  _dbus_assert (child_index >= 0 && child_index < parent->n_subtrees);
+    _dbus_assert(parent != NULL);
+    _dbus_assert(child_index >= 0 && child_index < parent->n_subtrees);
 
-  candidate = parent->subtrees[child_index];
-  _dbus_assert (candidate != NULL);
+    candidate = parent->subtrees[child_index];
+    _dbus_assert(candidate != NULL);
 
-  if (candidate->n_subtrees == 0 && candidate->message_function == NULL)
-    {
-      /* The candidate node is childless and is not a registered
+    if (candidate->n_subtrees == 0 && candidate->message_function == NULL) {
+        /* The candidate node is childless and is not a registered
          path, so... */
 
-      /* ... remove it from its parent... */
-      /* Assumes a 0-byte memmove is OK */
-      memmove (&parent->subtrees[child_index],
-               &parent->subtrees[child_index + 1],
-               (parent->n_subtrees - child_index - 1)
-               * sizeof (parent->subtrees[0]));
-      parent->n_subtrees -= 1;
+        /* ... remove it from its parent... */
+        /* Assumes a 0-byte memmove is OK */
+        memmove(&parent->subtrees[child_index], &parent->subtrees[child_index + 1],
+                (parent->n_subtrees - child_index - 1) * sizeof(parent->subtrees[0]));
+        parent->n_subtrees -= 1;
 
-      /* ... and free it */
-      candidate->parent = NULL;
-      _dbus_object_subtree_unref (candidate);
+        /* ... and free it */
+        candidate->parent = NULL;
+        _dbus_object_subtree_unref(candidate);
 
-      return TRUE;
+        return TRUE;
     }
-  return FALSE;
+    return FALSE;
 }
 
 /**
@@ -564,55 +508,43 @@ attempt_child_removal (DBusObjectSubtree  *parent,
  * @param user_data_out returns the found node's user_data
  * @returns #TRUE if a registered node was found at path, #FALSE otherwise
  */
-static dbus_bool_t
-unregister_and_free_path_recurse
-(DBusObjectSubtree                 *subtree,
- const char                       **path,
- dbus_bool_t                       *continue_removal_attempts,
- DBusObjectPathUnregisterFunction  *unregister_function_out,
- void                             **user_data_out)
+static dbus_bool_t unregister_and_free_path_recurse(DBusObjectSubtree *subtree, const char **path,
+                                                    dbus_bool_t *continue_removal_attempts,
+                                                    DBusObjectPathUnregisterFunction *unregister_function_out,
+                                                    void **user_data_out)
 {
-  int i, j;
+    int i, j;
 
-  _dbus_assert (continue_removal_attempts != NULL);
-  _dbus_assert (*continue_removal_attempts);
-  _dbus_assert (unregister_function_out != NULL);
-  _dbus_assert (user_data_out != NULL);
+    _dbus_assert(continue_removal_attempts != NULL);
+    _dbus_assert(*continue_removal_attempts);
+    _dbus_assert(unregister_function_out != NULL);
+    _dbus_assert(user_data_out != NULL);
 
-  if (path[0] == NULL)
-    return unregister_subtree (subtree, unregister_function_out, user_data_out);
+    if (path[0] == NULL)
+        return unregister_subtree(subtree, unregister_function_out, user_data_out);
 
-  i = 0;
-  j = subtree->n_subtrees;
-  while (i < j)
-    {
-      int k, v;
+    i = 0;
+    j = subtree->n_subtrees;
+    while (i < j) {
+        int k, v;
 
-      k = (i + j) / 2;
-      v = strcmp (path[0], subtree->subtrees[k]->name);
+        k = (i + j) / 2;
+        v = strcmp(path[0], subtree->subtrees[k]->name);
 
-      if (v == 0)
-        {
-          dbus_bool_t freed;
-          freed = unregister_and_free_path_recurse (subtree->subtrees[k],
-                                                    &path[1],
-                                                    continue_removal_attempts,
-                                                    unregister_function_out,
-                                                    user_data_out);
-          if (freed && *continue_removal_attempts)
-            *continue_removal_attempts = attempt_child_removal (subtree, k);
-          return freed;
-        }
-      else if (v < 0)
-        {
-          j = k;
-        }
-      else
-        {
-          i = k + 1;
+        if (v == 0) {
+            dbus_bool_t freed;
+            freed = unregister_and_free_path_recurse(subtree->subtrees[k], &path[1], continue_removal_attempts,
+                                                     unregister_function_out, user_data_out);
+            if (freed && *continue_removal_attempts)
+                *continue_removal_attempts = attempt_child_removal(subtree, k);
+            return freed;
+        } else if (v < 0) {
+            j = k;
+        } else {
+            i = k + 1;
         }
     }
-  return FALSE;
+    return FALSE;
 }
 
 /**
@@ -622,93 +554,82 @@ unregister_and_free_path_recurse
  * @param tree the global object tree
  * @param path path to the subtree (same as the one passed to _dbus_object_tree_register())
  */
-void
-_dbus_object_tree_unregister_and_unlock (DBusObjectTree          *tree,
-                                         const char             **path)
+void _dbus_object_tree_unregister_and_unlock(DBusObjectTree *tree, const char **path)
 {
-  dbus_bool_t found_subtree;
-  dbus_bool_t continue_removal_attempts;
-  DBusObjectPathUnregisterFunction unregister_function;
-  void *user_data;
-  DBusConnection *connection;
+    dbus_bool_t found_subtree;
+    dbus_bool_t continue_removal_attempts;
+    DBusObjectPathUnregisterFunction unregister_function;
+    void *user_data;
+    DBusConnection *connection;
 
-  _dbus_assert (tree != NULL);
-  _dbus_assert (path != NULL);
+    _dbus_assert(tree != NULL);
+    _dbus_assert(path != NULL);
 
-  continue_removal_attempts = TRUE;
-  unregister_function = NULL;
-  user_data = NULL;
+    continue_removal_attempts = TRUE;
+    unregister_function = NULL;
+    user_data = NULL;
 
-  found_subtree = unregister_and_free_path_recurse (tree->root,
-                                                    path,
-                                                    &continue_removal_attempts,
-                                                    &unregister_function,
-                                                    &user_data);
+    found_subtree = unregister_and_free_path_recurse(tree->root, path, &continue_removal_attempts, &unregister_function,
+                                                     &user_data);
 
 #ifndef DBUS_DISABLE_CHECKS
-  if (found_subtree == FALSE)
-    {
-      _dbus_warn ("Attempted to unregister path (path[0] = %s path[1] = %s) which isn't registered",
-                  path[0] ? path[0] : "null",
-                  (path[0] && path[1]) ? path[1] : "null");
-      goto unlock;    
+    if (found_subtree == FALSE) {
+        _dbus_warn("Attempted to unregister path (path[0] = %s path[1] = %s) which isn't registered",
+                   path[0] ? path[0] : "null", (path[0] && path[1]) ? path[1] : "null");
+        goto unlock;
     }
 #else
-  _dbus_assert (found_subtree == TRUE);
+    _dbus_assert(found_subtree == TRUE);
 #endif
 
 unlock:
-  connection = tree->connection;
+    connection = tree->connection;
 
-  /* Unlock and call application code */
+    /* Unlock and call application code */
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-  if (connection)
+    if (connection)
 #endif
     {
-      _dbus_connection_ref_unlocked (connection);
-      _dbus_verbose ("unlock\n");
-      _dbus_connection_unlock (connection);
+        _dbus_connection_ref_unlocked(connection);
+        _dbus_verbose("unlock\n");
+        _dbus_connection_unlock(connection);
     }
 
-  if (unregister_function)
-    (* unregister_function) (connection, user_data);
+    if (unregister_function)
+        (*unregister_function)(connection, user_data);
 
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-  if (connection)
+    if (connection)
 #endif
-    dbus_connection_unref (connection);
+        dbus_connection_unref(connection);
 }
 
-static void
-free_subtree_recurse (DBusConnection    *connection,
-                      DBusObjectSubtree *subtree)
+static void free_subtree_recurse(DBusConnection *connection, DBusObjectSubtree *subtree)
 {
-  /* Delete them from the end, for slightly
+    /* Delete them from the end, for slightly
    * more robustness against odd reentrancy.
    */
-  while (subtree->n_subtrees > 0)
-    {
-      DBusObjectSubtree *child;
+    while (subtree->n_subtrees > 0) {
+        DBusObjectSubtree *child;
 
-      child = subtree->subtrees[subtree->n_subtrees - 1];
-      subtree->subtrees[subtree->n_subtrees - 1] = NULL;
-      subtree->n_subtrees -= 1;
-      child->parent = NULL;
+        child = subtree->subtrees[subtree->n_subtrees - 1];
+        subtree->subtrees[subtree->n_subtrees - 1] = NULL;
+        subtree->n_subtrees -= 1;
+        child->parent = NULL;
 
-      free_subtree_recurse (connection, child);
+        free_subtree_recurse(connection, child);
     }
 
-  /* Call application code */
-  if (subtree->unregister_function)
-    (* subtree->unregister_function) (connection,
-				      subtree->user_data);
+    /* Call application code */
+    if (subtree->unregister_function)
+        (*subtree->unregister_function)(connection, subtree->user_data);
 
-  subtree->message_function = NULL;
-  subtree->unregister_function = NULL;
-  subtree->user_data = NULL;
+    subtree->message_function = NULL;
+    subtree->unregister_function = NULL;
+    subtree->user_data = NULL;
 
-  /* Now free ourselves */
-  _dbus_object_subtree_unref (subtree);
+    /* Now free ourselves */
+    _dbus_object_subtree_unref(subtree);
 }
 
 /**
@@ -717,175 +638,157 @@ free_subtree_recurse (DBusConnection    *connection,
  *
  * @param tree the object tree
  */
-void
-_dbus_object_tree_free_all_unlocked (DBusObjectTree *tree)
+void _dbus_object_tree_free_all_unlocked(DBusObjectTree *tree)
 {
-  if (tree->root)
-    free_subtree_recurse (tree->connection,
-                          tree->root);
-  tree->root = NULL;
+    if (tree->root)
+        free_subtree_recurse(tree->connection, tree->root);
+    tree->root = NULL;
 }
 
-static dbus_bool_t
-_dbus_object_tree_list_registered_unlocked (DBusObjectTree *tree,
-                                            const char    **parent_path,
-                                            char         ***child_entries)
+static dbus_bool_t _dbus_object_tree_list_registered_unlocked(DBusObjectTree *tree, const char **parent_path,
+                                                              char ***child_entries)
 {
-  DBusObjectSubtree *subtree;
-  char **retval;
-  
-  _dbus_assert (parent_path != NULL);
-  _dbus_assert (child_entries != NULL);
+    DBusObjectSubtree *subtree;
+    char **retval;
 
-  *child_entries = NULL;
-  
-  subtree = lookup_subtree (tree, parent_path);
-  if (subtree == NULL)
-    {
-      retval = dbus_new0 (char *, 1);
-    }
-  else
-    {
-      int i;
-      retval = dbus_new0 (char*, subtree->n_subtrees + 1);
-      if (retval == NULL)
-        goto out;
-      i = 0;
-      while (i < subtree->n_subtrees)
-        {
-          retval[i] = _dbus_strdup (subtree->subtrees[i]->name);
-          if (retval[i] == NULL)
-            {
-              dbus_free_string_array (retval);
-              retval = NULL;
-              goto out;
+    _dbus_assert(parent_path != NULL);
+    _dbus_assert(child_entries != NULL);
+
+    *child_entries = NULL;
+
+    subtree = lookup_subtree(tree, parent_path);
+    if (subtree == NULL) {
+        retval = dbus_new0(char *, 1);
+    } else {
+        int i;
+        retval = dbus_new0(char *, subtree->n_subtrees + 1);
+        if (retval == NULL)
+            goto out;
+        i = 0;
+        while (i < subtree->n_subtrees) {
+            retval[i] = _dbus_strdup(subtree->subtrees[i]->name);
+            if (retval[i] == NULL) {
+                dbus_free_string_array(retval);
+                retval = NULL;
+                goto out;
             }
-          ++i;
+            ++i;
         }
     }
 
- out:
-    
-  *child_entries = retval;
-  return retval != NULL;
+out:
+
+    *child_entries = retval;
+    return retval != NULL;
 }
 
-static DBusHandlerResult
-handle_default_introspect_and_unlock (DBusObjectTree          *tree,
-                                      DBusMessage             *message,
-                                      const char             **path)
+static DBusHandlerResult handle_default_introspect_and_unlock(DBusObjectTree *tree, DBusMessage *message,
+                                                              const char **path)
 {
-  DBusString xml;
-  DBusHandlerResult result;
-  char **children;
-  int i;
-  DBusMessage *reply;
-  DBusMessageIter iter;
-  const char *v_STRING;
-  dbus_bool_t already_unlocked;
+    DBusString xml;
+    DBusHandlerResult result;
+    char **children;
+    int i;
+    DBusMessage *reply;
+    DBusMessageIter iter;
+    const char *v_STRING;
+    dbus_bool_t already_unlocked;
 
-  /* We have the connection lock here */
+    /* We have the connection lock here */
 
-  already_unlocked = FALSE;
-  
-  _dbus_verbose (" considering default Introspect() handler...\n");
+    already_unlocked = FALSE;
 
-  reply = NULL;
-  
-  if (!dbus_message_is_method_call (message,
-                                    DBUS_INTERFACE_INTROSPECTABLE,
-                                    "Introspect"))
-    {
+    _dbus_verbose(" considering default Introspect() handler...\n");
+
+    reply = NULL;
+
+    if (!dbus_message_is_method_call(message, DBUS_INTERFACE_INTROSPECTABLE, "Introspect")) {
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-      if (tree->connection)
+        if (tree->connection)
 #endif
         {
-          _dbus_verbose ("unlock\n");
-          _dbus_connection_unlock (tree->connection);
+            _dbus_verbose("unlock\n");
+            _dbus_connection_unlock(tree->connection);
         }
-      
-      return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+
+        return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
     }
 
-  _dbus_verbose (" using default Introspect() handler!\n");
-  
-  if (!_dbus_string_init (&xml))
-    {
+    _dbus_verbose(" using default Introspect() handler!\n");
+
+    if (!_dbus_string_init(&xml)) {
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-      if (tree->connection)
+        if (tree->connection)
 #endif
         {
-          _dbus_verbose ("unlock\n");
-          _dbus_connection_unlock (tree->connection);
+            _dbus_verbose("unlock\n");
+            _dbus_connection_unlock(tree->connection);
         }
 
-      return DBUS_HANDLER_RESULT_NEED_MEMORY;
+        return DBUS_HANDLER_RESULT_NEED_MEMORY;
     }
 
-  result = DBUS_HANDLER_RESULT_NEED_MEMORY;
+    result = DBUS_HANDLER_RESULT_NEED_MEMORY;
 
-  children = NULL;
-  if (!_dbus_object_tree_list_registered_unlocked (tree, path, &children))
-    goto out;
-
-  if (!_dbus_string_append (&xml, DBUS_INTROSPECT_1_0_XML_DOCTYPE_DECL_NODE))
-    goto out;
-  
-  if (!_dbus_string_append (&xml, "<node>\n"))
-    goto out;
-
-  i = 0;
-  while (children[i] != NULL)
-    {
-      if (!_dbus_string_append_printf (&xml, "  <node name=\"%s\"/>\n",
-                                       children[i]))
+    children = NULL;
+    if (!_dbus_object_tree_list_registered_unlocked(tree, path, &children))
         goto out;
 
-      ++i;
-    }
-
-  if (!_dbus_string_append (&xml, "</node>\n"))
-    goto out;
-
-  reply = dbus_message_new_method_return (message);
-  if (reply == NULL)
-    goto out;
-
-  dbus_message_iter_init_append (reply, &iter);
-  v_STRING = _dbus_string_get_const_data (&xml);
-  if (!dbus_message_iter_append_basic (&iter, DBUS_TYPE_STRING, &v_STRING))
-    goto out;
-  
-#ifdef DBUS_ENABLE_EMBEDDED_TESTS
-  if (tree->connection)
-#endif
-    {
-      already_unlocked = TRUE;
-      
-      if (!_dbus_connection_send_and_unlock (tree->connection, reply, NULL))
+    if (!_dbus_string_append(&xml, DBUS_INTROSPECT_1_0_XML_DOCTYPE_DECL_NODE))
         goto out;
+
+    if (!_dbus_string_append(&xml, "<node>\n"))
+        goto out;
+
+    i = 0;
+    while (children[i] != NULL) {
+        if (!_dbus_string_append_printf(&xml, "  <node name=\"%s\"/>\n", children[i]))
+            goto out;
+
+        ++i;
     }
-  
-  result = DBUS_HANDLER_RESULT_HANDLED;
-  
- out:
+
+    if (!_dbus_string_append(&xml, "</node>\n"))
+        goto out;
+
+    reply = dbus_message_new_method_return(message);
+    if (reply == NULL)
+        goto out;
+
+    dbus_message_iter_init_append(reply, &iter);
+    v_STRING = _dbus_string_get_const_data(&xml);
+    if (!dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &v_STRING))
+        goto out;
+
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-  if (tree->connection)
+    if (tree->connection)
 #endif
     {
-      if (!already_unlocked)
-        {
-          _dbus_verbose ("unlock\n");
-          _dbus_connection_unlock (tree->connection);
+        already_unlocked = TRUE;
+
+        if (!_dbus_connection_send_and_unlock(tree->connection, reply, NULL))
+            goto out;
+    }
+
+    result = DBUS_HANDLER_RESULT_HANDLED;
+
+out:
+#ifdef DBUS_ENABLE_EMBEDDED_TESTS
+    if (tree->connection)
+#endif
+    {
+        if (!already_unlocked) {
+            _dbus_verbose("unlock\n");
+            _dbus_connection_unlock(tree->connection);
         }
     }
-  
-  _dbus_string_free (&xml);
-  dbus_free_string_array (children);
-  if (reply)
-    dbus_message_unref (reply);
-  
-  return result;
+
+    _dbus_string_free(&xml);
+    dbus_free_string_array(children);
+    if (reply)
+        dbus_message_unref(reply);
+
+    return result;
 }
 
 /**
@@ -902,168 +805,161 @@ handle_default_introspect_and_unlock (DBusObjectTree          *tree,
  * @param found_object return location for the object
  * @returns whether message was handled successfully
  */
-DBusHandlerResult
-_dbus_object_tree_dispatch_and_unlock (DBusObjectTree          *tree,
-                                       DBusMessage             *message,
-                                       dbus_bool_t             *found_object)
+// dbus-daemon 使用对象树将请求路由到正确的目标对象
+/**
+ * @brief 分发消息并解锁连接
+ *
+ * 这个函数用于根据对象树中的处理程序来分发处理接收到的消息。
+ * 
+ * @param tree 指向 DBusObjectTree 对象的指针
+ * @param message 指向 DBusMessage 对象的指针
+ * @param found_object 用于指示是否找到了处理该消息的对象
+ * @returns DBusHandlerResult，指示消息处理的结果
+ */
+DBusHandlerResult _dbus_object_tree_dispatch_and_unlock(DBusObjectTree *tree, DBusMessage *message,
+                                                        dbus_bool_t *found_object)
 {
-  char **path;
-  dbus_bool_t exact_match;
-  DBusList *list;
-  DBusList *link;
-  DBusHandlerResult result;
-  DBusObjectSubtree *subtree;
-  
+    char **path;
+    dbus_bool_t exact_match;
+    DBusList *list;
+    DBusList *link;
+    DBusHandlerResult result;
+    DBusObjectSubtree *subtree;
+
 #if 0
-  _dbus_verbose ("Dispatch of message by object path\n");
+    _dbus_verbose ("Dispatch of message by object path\n");
 #endif
-  
-  path = NULL;
-  if (!dbus_message_get_path_decomposed (message, &path))
-    {
+
+    path = NULL;
+    if (!dbus_message_get_path_decomposed(message, &path)) {
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-      if (tree->connection)
+        if (tree->connection)
 #endif
         {
-          _dbus_verbose ("unlock\n");
-          _dbus_connection_unlock (tree->connection);
+            _dbus_verbose("unlock\n");
+            _dbus_connection_unlock(tree->connection);
         }
-      
-      _dbus_verbose ("No memory to get decomposed path\n");
 
-      return DBUS_HANDLER_RESULT_NEED_MEMORY;
+        _dbus_verbose("No memory to get decomposed path\n");
+
+        return DBUS_HANDLER_RESULT_NEED_MEMORY;
     }
 
-  if (path == NULL)
-    {
+    if (path == NULL) {
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-      if (tree->connection)
+        if (tree->connection)
 #endif
         {
-          _dbus_verbose ("unlock\n");
-          _dbus_connection_unlock (tree->connection);
+            _dbus_verbose("unlock\n");
+            _dbus_connection_unlock(tree->connection);
         }
-      
-      _dbus_verbose ("No path field in message\n");
-      return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+
+        _dbus_verbose("No path field in message\n");
+        return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
     }
-  
-  /* Find the deepest path that covers the path in the message */
-  subtree = find_handler (tree, (const char**) path, &exact_match);
-  
-  if (found_object)
-    *found_object = !!subtree;
 
-  /* Build a list of all paths that cover the path in the message */
+    /* 找到最深的覆盖消息路径的路径 */
+    subtree = find_handler(tree, (const char **)path, &exact_match);
 
-  list = NULL;
+    if (found_object)
+        *found_object = !!subtree;
 
-  while (subtree != NULL)
-    {
-      if (subtree->message_function != NULL && (exact_match || subtree->invoke_as_fallback))
-        {
-          _dbus_object_subtree_ref (subtree);
+    /* 构建一个覆盖消息路径的所有路径的列表 */
 
-          /* run deepest paths first */
-          if (!_dbus_list_append (&list, subtree))
-            {
-              result = DBUS_HANDLER_RESULT_NEED_MEMORY;
-              _dbus_object_subtree_unref (subtree);
-              goto free_and_return;
+    list = NULL;
+
+    // 这段代码遍历对象树中的子树，找到适合处理当前消息的处理程序，并将这些处理程序添加到列表中。然后，它按顺序调用这些处理程序来处理消息。
+    while (subtree != NULL) {
+        // 检查当前子树是否有消息处理函数，并且路径是否精确匹配或子树标记为回退调用
+        if (subtree->message_function != NULL && (exact_match || subtree->invoke_as_fallback)) {
+            // 增加子树的引用计数，确保在处理过程中不会被销毁
+            _dbus_object_subtree_ref(subtree);
+
+            /* 将当前子树添加到处理程序列表中，先运行最深的路径 */
+            if (!_dbus_list_append(&list, subtree)) {
+                // 如果添加失败，设置结果为需要内存，并减少子树的引用计数
+                result = DBUS_HANDLER_RESULT_NEED_MEMORY;
+                _dbus_object_subtree_unref(subtree);
+                // 跳转到清理代码，释放资源并返回结果
+                goto free_and_return;
             }
         }
 
-      exact_match = FALSE;
-      subtree = subtree->parent;
+        // 不再需要精确匹配，继续向上遍历父子树
+        exact_match = FALSE;
+        subtree = subtree->parent;
     }
 
-  _dbus_verbose ("%d handlers in the path tree for this message\n",
-                 _dbus_list_get_length (&list));
+    _dbus_verbose("%d handlers in the path tree for this message\n", _dbus_list_get_length(&list));
 
-  /* Invoke each handler in the list */
+    /* 调用列表中的每个处理程序 */
 
-  result = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+    result = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
-  link = _dbus_list_get_first_link (&list);
-  while (link != NULL)
-    {
-      DBusList *next = _dbus_list_get_next_link (&list, link);
-      subtree = link->data;
+    link = _dbus_list_get_first_link(&list);
+    while (link != NULL) {
+        DBusList *next = _dbus_list_get_next_link(&list, link);
+        subtree = link->data;
 
-      /* message_function is NULL if we're unregistered
-       * due to reentrancy
-       */
-      if (subtree->message_function)
-        {
-          DBusObjectPathMessageFunction message_function;
-          void *user_data;
+        /* 如果由于重入我们被取消注册，message_function 将为 NULL */
+        if (subtree->message_function) {
+            DBusObjectPathMessageFunction message_function;
+            void *user_data;
 
-          message_function = subtree->message_function;
-          user_data = subtree->user_data;
+            message_function = subtree->message_function;
+            user_data = subtree->user_data;
 
 #if 0
-          _dbus_verbose ("  (invoking a handler)\n");
+            _dbus_verbose ("  (invoking a handler)\n");
 #endif
-          
+
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-          if (tree->connection)
+            if (tree->connection)
 #endif
             {
-              _dbus_verbose ("unlock\n");
-              _dbus_connection_unlock (tree->connection);
+                _dbus_verbose("unlock\n");
+                _dbus_connection_unlock(tree->connection);
             }
 
-          /* FIXME you could unregister the subtree in another thread
-           * before we invoke the callback, and I can't figure out a
-           * good way to solve this.
-           */
-
-          result = (* message_function) (tree->connection,
-                                         message,
-                                         user_data);
+            /* FIXME 你可以在另一个线程中注销子树，然后我们在调用回调之前，这里暂时没有一个好的解决方案 */
+            result = (*message_function)(tree->connection, message, user_data);
 
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-          if (tree->connection)
+            if (tree->connection)
 #endif
-            _dbus_connection_lock (tree->connection);
+                _dbus_connection_lock(tree->connection);
 
-          if (result != DBUS_HANDLER_RESULT_NOT_YET_HANDLED)
-            goto free_and_return;
+            if (result != DBUS_HANDLER_RESULT_NOT_YET_HANDLED)
+                goto free_and_return;
         }
 
-      link = next;
+        link = next;
     }
 
- free_and_return:
+free_and_return:
 
-  if (result == DBUS_HANDLER_RESULT_NOT_YET_HANDLED)
-    {
-      /* This hardcoded default handler does a minimal Introspect()
-       */
-      result = handle_default_introspect_and_unlock (tree, message,
-                                                     (const char**) path);
-    }
-  else
-    {
+    if (result == DBUS_HANDLER_RESULT_NOT_YET_HANDLED) {
+        /* 这个硬编码的默认处理程序执行一个最小的 Introspect() */
+        result = handle_default_introspect_and_unlock(tree, message, (const char **)path);
+    } else {
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-      if (tree->connection)
+        if (tree->connection)
 #endif
         {
-          _dbus_verbose ("unlock\n");
-          _dbus_connection_unlock (tree->connection);
+            _dbus_verbose("unlock\n");
+            _dbus_connection_unlock(tree->connection);
         }
     }
-  
-  while (list != NULL)
-    {
-      link = _dbus_list_get_first_link (&list);
-      _dbus_object_subtree_unref (link->data);
-      _dbus_list_remove_link (&list, link);
-    }
-  
-  dbus_free_string_array (path);
 
-  return result;
+    while (list != NULL) {
+        link = _dbus_list_get_first_link(&list);
+        _dbus_object_subtree_unref(link->data);
+        _dbus_list_remove_link(&list, link);
+    }
+
+    dbus_free_string_array(path);
+
+    return result;
 }
 
 /**
@@ -1074,26 +970,23 @@ _dbus_object_tree_dispatch_and_unlock (DBusObjectTree          *tree,
  * @param path NULL-terminated array of path elements giving path to subtree
  * @returns the object's user_data or #NULL if none found
  */
-void*
-_dbus_object_tree_get_user_data_unlocked (DBusObjectTree *tree,
-                                          const char    **path)
+void *_dbus_object_tree_get_user_data_unlocked(DBusObjectTree *tree, const char **path)
 {
-  dbus_bool_t exact_match;
-  DBusObjectSubtree *subtree;
+    dbus_bool_t exact_match;
+    DBusObjectSubtree *subtree;
 
-  _dbus_assert (tree != NULL);
-  _dbus_assert (path != NULL);
-  
-  /* Find the deepest path that covers the path in the message */
-  subtree = find_handler (tree, (const char**) path, &exact_match);
+    _dbus_assert(tree != NULL);
+    _dbus_assert(path != NULL);
 
-  if ((subtree == NULL) || !exact_match)
-    {
-      _dbus_verbose ("No object at specified path found\n");
-      return NULL;
+    /* Find the deepest path that covers the path in the message */
+    subtree = find_handler(tree, (const char **)path, &exact_match);
+
+    if ((subtree == NULL) || !exact_match) {
+        _dbus_verbose("No object at specified path found\n");
+        return NULL;
     }
 
-  return subtree->user_data;
+    return subtree->user_data;
 }
 
 /**
@@ -1102,96 +995,100 @@ _dbus_object_tree_get_user_data_unlocked (DBusObjectTree *tree,
  * @param name name to duplicate.
  * @returns newly-allocated subtree
  */
-static DBusObjectSubtree*
-allocate_subtree_object (const char *name)
+static DBusObjectSubtree *allocate_subtree_object(const char *name)
 {
-  int len;
-  DBusObjectSubtree *subtree;
-  const size_t front_padding = _DBUS_STRUCT_OFFSET (DBusObjectSubtree, name);
+    int len;
+    DBusObjectSubtree *subtree;
+    const size_t front_padding = _DBUS_STRUCT_OFFSET(DBusObjectSubtree, name);
 
-  _dbus_assert (name != NULL);
+    _dbus_assert(name != NULL);
 
-  len = strlen (name);
+    len = strlen(name);
 
-  subtree = dbus_malloc0 (MAX (front_padding + (len + 1), sizeof (DBusObjectSubtree)));
+    subtree = dbus_malloc0(MAX(front_padding + (len + 1), sizeof(DBusObjectSubtree)));
 
-  if (subtree == NULL)
+    if (subtree == NULL)
+        return NULL;
+
+    memcpy(subtree->name, name, len + 1);
+
+    return subtree;
+}
+
+static DBusObjectSubtree *_dbus_object_subtree_new(const char *name, const DBusObjectPathVTable *vtable,
+                                                   void *user_data)
+{
+    DBusObjectSubtree *subtree;
+
+    subtree = allocate_subtree_object(name);
+    if (subtree == NULL)
+        goto oom;
+
+    _dbus_assert(name != NULL);
+
+    subtree->parent = NULL;
+
+    if (vtable) {
+        subtree->message_function = vtable->message_function;
+        subtree->unregister_function = vtable->unregister_function;
+    } else {
+        subtree->message_function = NULL;
+        subtree->unregister_function = NULL;
+    }
+
+    subtree->user_data = user_data;
+    _dbus_atomic_inc(&subtree->refcount);
+    subtree->subtrees = NULL;
+    subtree->n_subtrees = 0;
+    subtree->max_subtrees = 0;
+    subtree->invoke_as_fallback = FALSE;
+
+    return subtree;
+
+oom:
     return NULL;
-
-  memcpy (subtree->name, name, len + 1);
-
-  return subtree;
 }
 
-static DBusObjectSubtree*
-_dbus_object_subtree_new (const char                  *name,
-                          const DBusObjectPathVTable  *vtable,
-                          void                        *user_data)
-{
-  DBusObjectSubtree *subtree;
-
-  subtree = allocate_subtree_object (name);
-  if (subtree == NULL)
-    goto oom;
-
-  _dbus_assert (name != NULL);
-
-  subtree->parent = NULL;
-
-  if (vtable)
-    {
-      subtree->message_function = vtable->message_function;
-      subtree->unregister_function = vtable->unregister_function;
-    }
-  else
-    {
-      subtree->message_function = NULL;
-      subtree->unregister_function = NULL;
-    }
-
-  subtree->user_data = user_data;
-  _dbus_atomic_inc (&subtree->refcount);
-  subtree->subtrees = NULL;
-  subtree->n_subtrees = 0;
-  subtree->max_subtrees = 0;
-  subtree->invoke_as_fallback = FALSE;
-
-  return subtree;
-
- oom:
-  return NULL;
-}
-
-static DBusObjectSubtree *
-_dbus_object_subtree_ref (DBusObjectSubtree *subtree)
+/**
+ * @brief 增加 DBusObjectSubtree 对象的引用计数
+ *
+ * 这个函数增加 DBusObjectSubtree 对象的引用计数，并返回该对象的指针。
+ * 如果启用了断言检查，则在增加引用计数后会进行有效性检查。
+ *
+ * @param subtree 指向 DBusObjectSubtree 对象的指针
+ * @returns 增加引用计数后的 DBusObjectSubtree 对象的指针
+ */
+static DBusObjectSubtree *_dbus_object_subtree_ref(DBusObjectSubtree *subtree)
 {
 #ifdef DBUS_DISABLE_ASSERT
-  _dbus_atomic_inc (&subtree->refcount);
+    // 如果禁用了断言检查，直接增加引用计数
+    _dbus_atomic_inc(&subtree->refcount);
 #else
-  dbus_int32_t old_value;
+    dbus_int32_t old_value;
 
-  old_value = _dbus_atomic_inc (&subtree->refcount);
-  _dbus_assert (old_value > 0);
+    // 增加引用计数，并获取增加前的旧值
+    old_value = _dbus_atomic_inc(&subtree->refcount);
+    // 断言旧值大于 0，确保引用计数有效
+    _dbus_assert(old_value > 0);
 #endif
 
-  return subtree;
+    // 返回增加引用计数后的子树对象
+    return subtree;
 }
 
-static void
-_dbus_object_subtree_unref (DBusObjectSubtree *subtree)
+static void _dbus_object_subtree_unref(DBusObjectSubtree *subtree)
 {
-  dbus_int32_t old_value;
+    dbus_int32_t old_value;
 
-  old_value = _dbus_atomic_dec (&subtree->refcount);
-  _dbus_assert (old_value > 0);
+    old_value = _dbus_atomic_dec(&subtree->refcount);
+    _dbus_assert(old_value > 0);
 
-  if (old_value == 1)
-    {
-      _dbus_assert (subtree->unregister_function == NULL);
-      _dbus_assert (subtree->message_function == NULL);
+    if (old_value == 1) {
+        _dbus_assert(subtree->unregister_function == NULL);
+        _dbus_assert(subtree->message_function == NULL);
 
-      dbus_free (subtree->subtrees);
-      dbus_free (subtree);
+        dbus_free(subtree->subtrees);
+        dbus_free(subtree);
     }
 }
 
@@ -1205,28 +1102,23 @@ _dbus_object_subtree_unref (DBusObjectSubtree *subtree)
  * @param child_entries returns #NULL-terminated array of children
  * @returns #FALSE if no memory to allocate the child entries
  */
-dbus_bool_t
-_dbus_object_tree_list_registered_and_unlock (DBusObjectTree *tree,
-                                              const char    **parent_path,
-                                              char         ***child_entries)
+dbus_bool_t _dbus_object_tree_list_registered_and_unlock(DBusObjectTree *tree, const char **parent_path,
+                                                         char ***child_entries)
 {
-  dbus_bool_t result;
+    dbus_bool_t result;
 
-  result = _dbus_object_tree_list_registered_unlocked (tree,
-                                                       parent_path,
-                                                       child_entries);
-  
+    result = _dbus_object_tree_list_registered_unlocked(tree, parent_path, child_entries);
+
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
-  if (tree->connection)
+    if (tree->connection)
 #endif
     {
-      _dbus_verbose ("unlock\n");
-      _dbus_connection_unlock (tree->connection);
+        _dbus_verbose("unlock\n");
+        _dbus_connection_unlock(tree->connection);
     }
 
-  return result;
+    return result;
 }
-
 
 /** Set to 1 to get a bunch of spew about disassembling the path string */
 #define VERBOSE_DECOMPOSE 0
@@ -1241,137 +1133,121 @@ _dbus_object_tree_list_registered_and_unlock (DBusObjectTree *tree,
  * @param path address to store new object path
  * @param path_len length of stored path
  */
-dbus_bool_t
-_dbus_decompose_path (const char*     data,
-                      int             len,
-                      char         ***path,
-                      int            *path_len)
+dbus_bool_t _dbus_decompose_path(const char *data, int len, char ***path, int *path_len)
 {
-  char **retval;
-  int n_components;
-  int i, j, comp;
+    char **retval;
+    int n_components;
+    int i, j, comp;
 
-  _dbus_assert (data != NULL);
-  _dbus_assert (path != NULL);
-  
+    _dbus_assert(data != NULL);
+    _dbus_assert(path != NULL);
+
 #if VERBOSE_DECOMPOSE
-  _dbus_verbose ("Decomposing path \"%s\"\n",
-                 data);
+    _dbus_verbose("Decomposing path \"%s\"\n", data);
 #endif
-  
-  n_components = 0;
-  if (len > 1) /* if path is not just "/" */
+
+    n_components = 0;
+    if (len > 1) /* if path is not just "/" */
     {
-      i = 0;
-      while (i < len)
-        {
-          _dbus_assert (data[i] != '\0');
-          if (data[i] == '/')
-            n_components += 1;
-          ++i;
+        i = 0;
+        while (i < len) {
+            _dbus_assert(data[i] != '\0');
+            if (data[i] == '/')
+                n_components += 1;
+            ++i;
         }
     }
-  
-  retval = dbus_new0 (char*, n_components + 1);
 
-  if (retval == NULL)
-    return FALSE;
+    retval = dbus_new0(char *, n_components + 1);
 
-  comp = 0;
-  if (n_components == 0)
-    i = 1;
-  else
-    i = 0;
-  while (comp < n_components)
-    {
-      _dbus_assert (i < len);
-      
-      if (data[i] == '/')
-        ++i;
-      j = i;
+    if (retval == NULL)
+        return FALSE;
 
-      while (j < len && data[j] != '/')
-        ++j;
+    comp = 0;
+    if (n_components == 0)
+        i = 1;
+    else
+        i = 0;
+    while (comp < n_components) {
+        _dbus_assert(i < len);
 
-      /* Now [i, j) is the path component */
-      _dbus_assert (i < j);
-      _dbus_assert (data[i] != '/');
-      _dbus_assert (j == len || data[j] == '/');
+        if (data[i] == '/')
+            ++i;
+        j = i;
+
+        while (j < len && data[j] != '/')
+            ++j;
+
+        /* Now [i, j) is the path component */
+        _dbus_assert(i < j);
+        _dbus_assert(data[i] != '/');
+        _dbus_assert(j == len || data[j] == '/');
 
 #if VERBOSE_DECOMPOSE
-      _dbus_verbose ("  (component in [%d,%d))\n",
-                     i, j);
+        _dbus_verbose("  (component in [%d,%d))\n", i, j);
 #endif
-      
-      retval[comp] = _dbus_memdup (&data[i], j - i + 1);
-      if (retval[comp] == NULL)
-        {
-          dbus_free_string_array (retval);
-          return FALSE;
+
+        retval[comp] = _dbus_memdup(&data[i], j - i + 1);
+        if (retval[comp] == NULL) {
+            dbus_free_string_array(retval);
+            return FALSE;
         }
-      retval[comp][j-i] = '\0';
+        retval[comp][j - i] = '\0';
 #if VERBOSE_DECOMPOSE
-      _dbus_verbose ("  (component %d = \"%s\")\n",
-                     comp, retval[comp]);
+        _dbus_verbose("  (component %d = \"%s\")\n", comp, retval[comp]);
 #endif
 
-      ++comp;
-      i = j;
+        ++comp;
+        i = j;
     }
-  _dbus_assert (i == len);
-  
-  *path = retval;
-  if (path_len)
-    *path_len = n_components;
-  
-  return TRUE;
+    _dbus_assert(i == len);
+
+    *path = retval;
+    if (path_len)
+        *path_len = n_components;
+
+    return TRUE;
 }
 
 /** @} */
 
-static char*
-flatten_path (const char **path)
+static char *flatten_path(const char **path)
 {
-  DBusString str;
-  char *s;
+    DBusString str;
+    char *s;
 
-  if (!_dbus_string_init (&str))
-    return NULL;
+    if (!_dbus_string_init(&str))
+        return NULL;
 
-  if (path[0] == NULL)
-    {
-      if (!_dbus_string_append_byte (&str, '/'))
-        goto nomem;
-    }
-  else
-    {
-      int i;
-      
-      i = 0;
-      while (path[i])
-        {
-          if (!_dbus_string_append_byte (&str, '/'))
+    if (path[0] == NULL) {
+        if (!_dbus_string_append_byte(&str, '/'))
             goto nomem;
-          
-          if (!_dbus_string_append (&str, path[i]))
-            goto nomem;
-          
-          ++i;
+    } else {
+        int i;
+
+        i = 0;
+        while (path[i]) {
+            if (!_dbus_string_append_byte(&str, '/'))
+                goto nomem;
+
+            if (!_dbus_string_append(&str, path[i]))
+                goto nomem;
+
+            ++i;
         }
     }
 
-  if (!_dbus_string_steal_data (&str, &s))
-    goto nomem;
+    if (!_dbus_string_steal_data(&str, &s))
+        goto nomem;
 
-  _dbus_string_free (&str);
+    _dbus_string_free(&str);
 
-  return s;
+    return s;
 
- nomem:
-  _dbus_string_free (&str);
-  return NULL;
+nomem:
+    _dbus_string_free(&str);
+    return NULL;
 }
-
 
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
 
@@ -1380,52 +1256,44 @@ flatten_path (const char **path)
 #include "dbus-test.h"
 #include <stdio.h>
 
-typedef enum 
-{
-  STR_EQUAL,
-  STR_PREFIX,
-  STR_DIFFERENT
-} StrComparison;
+typedef enum { STR_EQUAL, STR_PREFIX, STR_DIFFERENT } StrComparison;
 
 /* Returns TRUE if container is a parent of child
  */
-static StrComparison
-path_contains (const char **container,
-               const char **child)
+static StrComparison path_contains(const char **container, const char **child)
 {
-  int i;
+    int i;
 
-  i = 0;
-  while (child[i] != NULL)
-    {
-      int v;
+    i = 0;
+    while (child[i] != NULL) {
+        int v;
 
-      if (container[i] == NULL)
-        return STR_PREFIX; /* container ran out, child continues;
+        if (container[i] == NULL)
+            return STR_PREFIX; /* container ran out, child continues;
                             * thus the container is a parent of the
                             * child.
                             */
 
-      _dbus_assert (container[i] != NULL);
-      _dbus_assert (child[i] != NULL);
+        _dbus_assert(container[i] != NULL);
+        _dbus_assert(child[i] != NULL);
 
-      v = strcmp (container[i], child[i]);
+        v = strcmp(container[i], child[i]);
 
-      if (v != 0)
-        return STR_DIFFERENT; /* they overlap until here and then are different,
+        if (v != 0)
+            return STR_DIFFERENT; /* they overlap until here and then are different,
                                * not overlapping
                                */
 
-      ++i;
+        ++i;
     }
 
-  /* Child ran out; if container also did, they are equal;
+    /* Child ran out; if container also did, they are equal;
    * otherwise, the child is a parent of the container.
    */
-  if (container[i] == NULL)
-    return STR_EQUAL;
-  else
-    return STR_DIFFERENT;
+    if (container[i] == NULL)
+        return STR_EQUAL;
+    else
+        return STR_DIFFERENT;
 }
 
 #if 0
@@ -1464,788 +1332,718 @@ spew_tree (DBusObjectTree *tree)
 /**
  * Callback data used in tests
  */
-typedef struct
-{
-  const char **path; /**< Path */
-  dbus_bool_t handler_fallback; /**< true if the handler may be called as fallback */
-  dbus_bool_t message_handled; /**< Gets set to true if message handler called */
-  dbus_bool_t handler_unregistered; /**< gets set to true if handler is unregistered */
+typedef struct {
+    const char **path; /**< Path */
+    dbus_bool_t handler_fallback; /**< true if the handler may be called as fallback */
+    dbus_bool_t message_handled; /**< Gets set to true if message handler called */
+    dbus_bool_t handler_unregistered; /**< gets set to true if handler is unregistered */
 } TreeTestData;
 
-
-static void
-test_unregister_function (DBusConnection  *connection,
-                          void            *user_data)
+static void test_unregister_function(DBusConnection *connection, void *user_data)
 {
-  TreeTestData *ttd = user_data;
+    TreeTestData *ttd = user_data;
 
-  ttd->handler_unregistered = TRUE;
+    ttd->handler_unregistered = TRUE;
 }
 
-static DBusHandlerResult
-test_message_function (DBusConnection  *connection,
-                       DBusMessage     *message,
-                       void            *user_data)
+static DBusHandlerResult test_message_function(DBusConnection *connection, DBusMessage *message, void *user_data)
 {
-  TreeTestData *ttd = user_data;
+    TreeTestData *ttd = user_data;
 
-  ttd->message_handled = TRUE;
+    ttd->message_handled = TRUE;
 
-  return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+    return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
-static dbus_bool_t
-do_register (DBusObjectTree *tree,
-             const char    **path,
-             dbus_bool_t     fallback,
-             int             i,
-             TreeTestData   *tree_test_data)
+static dbus_bool_t do_register(DBusObjectTree *tree, const char **path, dbus_bool_t fallback, int i,
+                               TreeTestData *tree_test_data)
 {
-  DBusObjectPathVTable vtable = { test_unregister_function,
-                                  test_message_function, NULL };
+    DBusObjectPathVTable vtable = { test_unregister_function, test_message_function, NULL };
 
-  tree_test_data[i].message_handled = FALSE;
-  tree_test_data[i].handler_unregistered = FALSE;
-  tree_test_data[i].handler_fallback = fallback;
-  tree_test_data[i].path = path;
+    tree_test_data[i].message_handled = FALSE;
+    tree_test_data[i].handler_unregistered = FALSE;
+    tree_test_data[i].handler_fallback = fallback;
+    tree_test_data[i].path = path;
 
-  if (!_dbus_object_tree_register (tree, fallback, path,
-                                   &vtable,
-                                   &tree_test_data[i],
-                                   NULL))
+    if (!_dbus_object_tree_register(tree, fallback, path, &vtable, &tree_test_data[i], NULL))
+        return FALSE;
+
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path) == &tree_test_data[i]);
+
+    return TRUE;
+}
+
+static dbus_bool_t do_test_dispatch(DBusObjectTree *tree, const char **path, int i, TreeTestData *tree_test_data,
+                                    int n_test_data)
+{
+    DBusMessage *message;
+    int j;
+    DBusHandlerResult result;
+    char *flat;
+
+    message = NULL;
+
+    flat = flatten_path(path);
+    if (flat == NULL)
+        goto oom;
+
+    message = dbus_message_new_method_call(NULL, flat, "org.freedesktop.TestInterface", "Foo");
+    dbus_free(flat);
+    if (message == NULL)
+        goto oom;
+
+    j = 0;
+    while (j < n_test_data) {
+        tree_test_data[j].message_handled = FALSE;
+        ++j;
+    }
+
+    result = _dbus_object_tree_dispatch_and_unlock(tree, message, NULL);
+    if (result == DBUS_HANDLER_RESULT_NEED_MEMORY)
+        goto oom;
+
+    _dbus_assert(tree_test_data[i].message_handled);
+
+    j = 0;
+    while (j < n_test_data) {
+        if (tree_test_data[j].message_handled) {
+            if (tree_test_data[j].handler_fallback)
+                _dbus_assert(path_contains(tree_test_data[j].path, path) != STR_DIFFERENT);
+            else
+                _dbus_assert(path_contains(tree_test_data[j].path, path) == STR_EQUAL);
+        } else {
+            if (tree_test_data[j].handler_fallback)
+                _dbus_assert(path_contains(tree_test_data[j].path, path) == STR_DIFFERENT);
+            else
+                _dbus_assert(path_contains(tree_test_data[j].path, path) != STR_EQUAL);
+        }
+
+        ++j;
+    }
+
+    dbus_message_unref(message);
+
+    return TRUE;
+
+oom:
+    if (message)
+        dbus_message_unref(message);
     return FALSE;
-
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path) ==
-                &tree_test_data[i]);
-  
-  return TRUE;
 }
 
-static dbus_bool_t
-do_test_dispatch (DBusObjectTree *tree,
-                  const char    **path,
-                  int             i,
-                  TreeTestData   *tree_test_data,
-                  int             n_test_data)
-{
-  DBusMessage *message;
-  int j;
-  DBusHandlerResult result;
-  char *flat;
-
-  message = NULL;
-  
-  flat = flatten_path (path);
-  if (flat == NULL)
-    goto oom;
-
-  message = dbus_message_new_method_call (NULL,
-                                          flat,
-                                          "org.freedesktop.TestInterface",
-                                          "Foo");
-  dbus_free (flat);
-  if (message == NULL)
-    goto oom;
-
-  j = 0;
-  while (j < n_test_data)
-    {
-      tree_test_data[j].message_handled = FALSE;
-      ++j;
-    }
-
-  result = _dbus_object_tree_dispatch_and_unlock (tree, message, NULL);
-  if (result == DBUS_HANDLER_RESULT_NEED_MEMORY)
-    goto oom;
-
-  _dbus_assert (tree_test_data[i].message_handled);
-
-  j = 0;
-  while (j < n_test_data)
-    {
-      if (tree_test_data[j].message_handled)
-	{
-	  if (tree_test_data[j].handler_fallback)
-	    _dbus_assert (path_contains (tree_test_data[j].path,
-					 path) != STR_DIFFERENT);
-	  else
-	    _dbus_assert (path_contains (tree_test_data[j].path, path) == STR_EQUAL);
-	}
-      else
-	{
-	  if (tree_test_data[j].handler_fallback)
-	    _dbus_assert (path_contains (tree_test_data[j].path,
-					 path) == STR_DIFFERENT);
-	  else
-	    _dbus_assert (path_contains (tree_test_data[j].path, path) != STR_EQUAL);
-	}
-
-      ++j;
-    }
-
-  dbus_message_unref (message);
-
-  return TRUE;
-
- oom:
-  if (message)
-    dbus_message_unref (message);
-  return FALSE;
-}
-
-typedef struct
-{
-  const char *path;
-  const char *result[20];
+typedef struct {
+    const char *path;
+    const char *result[20];
 } DecomposePathTest;
 
-static DecomposePathTest decompose_tests[] = {
-  { "/foo", { "foo", NULL } },
-  { "/foo/bar", { "foo", "bar", NULL } },
-  { "/", { NULL } },
-  { "/a/b", { "a", "b", NULL } },
-  { "/a/b/c", { "a", "b", "c", NULL } },
-  { "/a/b/c/d", { "a", "b", "c", "d", NULL } },
-  { "/foo/bar/q", { "foo", "bar", "q", NULL } },
-  { "/foo/bar/this/is/longer", { "foo", "bar", "this", "is", "longer", NULL } }
-};
+static DecomposePathTest decompose_tests[] = { { "/foo", { "foo", NULL } },
+                                               { "/foo/bar", { "foo", "bar", NULL } },
+                                               { "/", { NULL } },
+                                               { "/a/b", { "a", "b", NULL } },
+                                               { "/a/b/c", { "a", "b", "c", NULL } },
+                                               { "/a/b/c/d", { "a", "b", "c", "d", NULL } },
+                                               { "/foo/bar/q", { "foo", "bar", "q", NULL } },
+                                               { "/foo/bar/this/is/longer",
+                                                 { "foo", "bar", "this", "is", "longer", NULL } } };
 
 /* Return TRUE on success, FALSE on OOM, die with an assertion failure
  * on failure. */
-static dbus_bool_t
-run_decompose_tests (void)
+static dbus_bool_t run_decompose_tests(void)
 {
-  int i;
+    int i;
 
-  i = 0;
-  while (i < _DBUS_N_ELEMENTS (decompose_tests))
-    {
-      char **result;
-      int    result_len;
-      int    expected_len;
+    i = 0;
+    while (i < _DBUS_N_ELEMENTS(decompose_tests)) {
+        char **result;
+        int result_len;
+        int expected_len;
 
-      if (!_dbus_decompose_path (decompose_tests[i].path,
-                                 strlen (decompose_tests[i].path),
-                                 &result, &result_len))
-        return FALSE;
+        if (!_dbus_decompose_path(decompose_tests[i].path, strlen(decompose_tests[i].path), &result, &result_len))
+            return FALSE;
 
-      expected_len = _dbus_string_array_length (decompose_tests[i].result);
-      
-      if (result_len != (int) _dbus_string_array_length ((const char**)result) ||
-          expected_len != result_len ||
-          path_contains (decompose_tests[i].result,
-                         (const char**) result) != STR_EQUAL)
-        {
-          int real_len = _dbus_string_array_length ((const char**)result);
-          _dbus_warn ("Expected decompose of %s to have len %d, returned %d, appears to have %d",
-                      decompose_tests[i].path, expected_len, result_len,
-                      real_len);
-          _dbus_warn ("Decompose resulted in elements: { ");
-          i = 0;
-          while (i < real_len)
-            {
-              _dbus_warn ("\"%s\"%s", result[i],
-                          (i + 1) == real_len ? "" : ", ");
-              ++i;
+        expected_len = _dbus_string_array_length(decompose_tests[i].result);
+
+        if (result_len != (int)_dbus_string_array_length((const char **)result) || expected_len != result_len ||
+            path_contains(decompose_tests[i].result, (const char **)result) != STR_EQUAL) {
+            int real_len = _dbus_string_array_length((const char **)result);
+            _dbus_warn("Expected decompose of %s to have len %d, returned %d, appears to have %d",
+                       decompose_tests[i].path, expected_len, result_len, real_len);
+            _dbus_warn("Decompose resulted in elements: { ");
+            i = 0;
+            while (i < real_len) {
+                _dbus_warn("\"%s\"%s", result[i], (i + 1) == real_len ? "" : ", ");
+                ++i;
             }
-          _dbus_warn ("}");
-          _dbus_test_fatal ("path decompose failed");
+            _dbus_warn("}");
+            _dbus_test_fatal("path decompose failed");
         }
 
-      dbus_free_string_array (result);
+        dbus_free_string_array(result);
 
-      ++i;
+        ++i;
     }
-  
-  return TRUE;
+
+    return TRUE;
 }
 
-static DBusObjectSubtree*
-find_subtree_registered_or_unregistered (DBusObjectTree *tree,
-                                         const char    **path)
+static DBusObjectSubtree *find_subtree_registered_or_unregistered(DBusObjectTree *tree, const char **path)
 {
 #if VERBOSE_FIND
-  _dbus_verbose ("Looking for exact subtree, registered or unregistered\n");
+    _dbus_verbose("Looking for exact subtree, registered or unregistered\n");
 #endif
 
-  return find_subtree_recurse (tree->root, path, FALSE, NULL, NULL);
+    return find_subtree_recurse(tree->root, path, FALSE, NULL, NULL);
 }
 
 /* Returns TRUE if the right thing happens, but the right thing might
  * be OOM. */
-static dbus_bool_t
-object_tree_test_iteration (void        *data,
-                            dbus_bool_t  have_memory)
+static dbus_bool_t object_tree_test_iteration(void *data, dbus_bool_t have_memory)
 {
-  const char *path0[] = { NULL };
-  const char *path1[] = { "foo", NULL };
-  const char *path2[] = { "foo", "bar", NULL };
-  const char *path3[] = { "foo", "bar", "baz", NULL };
-  const char *path4[] = { "foo", "bar", "boo", NULL };
-  const char *path5[] = { "blah", NULL };
-  const char *path6[] = { "blah", "boof", NULL };
-  const char *path7[] = { "blah", "boof", "this", "is", "really", "long", NULL };
-  const char *path8[] = { "childless", NULL };
-  const char *path9[] = { "blah", "a", NULL };
-  const char *path10[] = { "blah", "b", NULL };
-  const char *path11[] = { "blah", "c", NULL };
-  const char *path12[] = { "blah", "a", "d", NULL };
-  const char *path13[] = { "blah", "b", "d", NULL };
-  const char *path14[] = { "blah", "c", "d", NULL };
-  DBusObjectPathVTable test_vtable = { NULL, test_message_function, NULL };
-  DBusObjectTree *tree;
-  TreeTestData tree_test_data[9];
-  int i;
-  dbus_bool_t exact_match;
+    const char *path0[] = { NULL };
+    const char *path1[] = { "foo", NULL };
+    const char *path2[] = { "foo", "bar", NULL };
+    const char *path3[] = { "foo", "bar", "baz", NULL };
+    const char *path4[] = { "foo", "bar", "boo", NULL };
+    const char *path5[] = { "blah", NULL };
+    const char *path6[] = { "blah", "boof", NULL };
+    const char *path7[] = { "blah", "boof", "this", "is", "really", "long", NULL };
+    const char *path8[] = { "childless", NULL };
+    const char *path9[] = { "blah", "a", NULL };
+    const char *path10[] = { "blah", "b", NULL };
+    const char *path11[] = { "blah", "c", NULL };
+    const char *path12[] = { "blah", "a", "d", NULL };
+    const char *path13[] = { "blah", "b", "d", NULL };
+    const char *path14[] = { "blah", "c", "d", NULL };
+    DBusObjectPathVTable test_vtable = { NULL, test_message_function, NULL };
+    DBusObjectTree *tree;
+    TreeTestData tree_test_data[9];
+    int i;
+    dbus_bool_t exact_match;
 
-  if (!run_decompose_tests ())
-    return TRUE; /* OOM is OK */
-  
-  tree = NULL;
+    if (!run_decompose_tests())
+        return TRUE; /* OOM is OK */
 
-  tree = _dbus_object_tree_new (NULL);
-  if (tree == NULL)
-    goto out;
+    tree = NULL;
 
-  if (!do_register (tree, path0, TRUE, 0, tree_test_data))
-    goto out;
+    tree = _dbus_object_tree_new(NULL);
+    if (tree == NULL)
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path0, NULL));
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree (tree, path4, NULL));
-  _dbus_assert (!find_subtree (tree, path5, NULL));
-  _dbus_assert (!find_subtree (tree, path6, NULL));
-  _dbus_assert (!find_subtree (tree, path7, NULL));
-  _dbus_assert (!find_subtree (tree, path8, NULL));
+    if (!do_register(tree, path0, TRUE, 0, tree_test_data))
+        goto out;
 
-  _dbus_assert (find_handler (tree, path0, &exact_match) && exact_match);
-  _dbus_assert (find_handler (tree, path1, &exact_match) == tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path2, &exact_match) == tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path3, &exact_match) == tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path4, &exact_match) == tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path5, &exact_match) == tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path6, &exact_match) == tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path7, &exact_match) == tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path8, &exact_match) == tree->root && !exact_match);
-  
-  if (!do_register (tree, path1, TRUE, 1, tree_test_data))
-    goto out;
+    _dbus_assert(find_subtree(tree, path0, NULL));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree(tree, path4, NULL));
+    _dbus_assert(!find_subtree(tree, path5, NULL));
+    _dbus_assert(!find_subtree(tree, path6, NULL));
+    _dbus_assert(!find_subtree(tree, path7, NULL));
+    _dbus_assert(!find_subtree(tree, path8, NULL));
 
-  _dbus_assert (find_subtree (tree, path0, NULL));
-  _dbus_assert (find_subtree (tree, path1, NULL));
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree (tree, path4, NULL));
-  _dbus_assert (!find_subtree (tree, path5, NULL));
-  _dbus_assert (!find_subtree (tree, path6, NULL));
-  _dbus_assert (!find_subtree (tree, path7, NULL));
-  _dbus_assert (!find_subtree (tree, path8, NULL));
+    _dbus_assert(find_handler(tree, path0, &exact_match) && exact_match);
+    _dbus_assert(find_handler(tree, path1, &exact_match) == tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path2, &exact_match) == tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path3, &exact_match) == tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path4, &exact_match) == tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path5, &exact_match) == tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path6, &exact_match) == tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path7, &exact_match) == tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path8, &exact_match) == tree->root && !exact_match);
 
-  _dbus_assert (find_handler (tree, path0, &exact_match) &&  exact_match);
-  _dbus_assert (find_handler (tree, path1, &exact_match) &&  exact_match);
-  _dbus_assert (find_handler (tree, path2, &exact_match) && !exact_match);
-  _dbus_assert (find_handler (tree, path3, &exact_match) && !exact_match);
-  _dbus_assert (find_handler (tree, path4, &exact_match) && !exact_match);
-  _dbus_assert (find_handler (tree, path5, &exact_match) == tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path6, &exact_match) == tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path7, &exact_match) == tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path8, &exact_match) == tree->root && !exact_match);
+    if (!do_register(tree, path1, TRUE, 1, tree_test_data))
+        goto out;
 
-  if (!do_register (tree, path2, TRUE, 2, tree_test_data))
-    goto out;
+    _dbus_assert(find_subtree(tree, path0, NULL));
+    _dbus_assert(find_subtree(tree, path1, NULL));
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree(tree, path4, NULL));
+    _dbus_assert(!find_subtree(tree, path5, NULL));
+    _dbus_assert(!find_subtree(tree, path6, NULL));
+    _dbus_assert(!find_subtree(tree, path7, NULL));
+    _dbus_assert(!find_subtree(tree, path8, NULL));
 
-  _dbus_assert (find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree (tree, path4, NULL));
-  _dbus_assert (!find_subtree (tree, path5, NULL));
-  _dbus_assert (!find_subtree (tree, path6, NULL));
-  _dbus_assert (!find_subtree (tree, path7, NULL));
-  _dbus_assert (!find_subtree (tree, path8, NULL));
+    _dbus_assert(find_handler(tree, path0, &exact_match) && exact_match);
+    _dbus_assert(find_handler(tree, path1, &exact_match) && exact_match);
+    _dbus_assert(find_handler(tree, path2, &exact_match) && !exact_match);
+    _dbus_assert(find_handler(tree, path3, &exact_match) && !exact_match);
+    _dbus_assert(find_handler(tree, path4, &exact_match) && !exact_match);
+    _dbus_assert(find_handler(tree, path5, &exact_match) == tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path6, &exact_match) == tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path7, &exact_match) == tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path8, &exact_match) == tree->root && !exact_match);
 
-  if (!do_register (tree, path3, TRUE, 3, tree_test_data))
-    goto out;
+    if (!do_register(tree, path2, TRUE, 2, tree_test_data))
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path0, NULL));
-  _dbus_assert (find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree (tree, path4, NULL));
-  _dbus_assert (!find_subtree (tree, path5, NULL));
-  _dbus_assert (!find_subtree (tree, path6, NULL));
-  _dbus_assert (!find_subtree (tree, path7, NULL));
-  _dbus_assert (!find_subtree (tree, path8, NULL));
-  
-  if (!do_register (tree, path4, TRUE, 4, tree_test_data))
-    goto out;
+    _dbus_assert(find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree(tree, path4, NULL));
+    _dbus_assert(!find_subtree(tree, path5, NULL));
+    _dbus_assert(!find_subtree(tree, path6, NULL));
+    _dbus_assert(!find_subtree(tree, path7, NULL));
+    _dbus_assert(!find_subtree(tree, path8, NULL));
 
-  _dbus_assert (find_subtree (tree, path0, NULL));
-  _dbus_assert (find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (find_subtree (tree, path3, NULL));  
-  _dbus_assert (find_subtree (tree, path4, NULL));
-  _dbus_assert (!find_subtree (tree, path5, NULL));
-  _dbus_assert (!find_subtree (tree, path6, NULL));
-  _dbus_assert (!find_subtree (tree, path7, NULL));
-  _dbus_assert (!find_subtree (tree, path8, NULL));
-  
-  if (!do_register (tree, path5, TRUE, 5, tree_test_data))
-    goto out;
+    if (!do_register(tree, path3, TRUE, 3, tree_test_data))
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path0, NULL));
-  _dbus_assert (find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (find_subtree (tree, path3, NULL));
-  _dbus_assert (find_subtree (tree, path4, NULL));
-  _dbus_assert (find_subtree (tree, path5, NULL));
-  _dbus_assert (!find_subtree (tree, path6, NULL));
-  _dbus_assert (!find_subtree (tree, path7, NULL));
-  _dbus_assert (!find_subtree (tree, path8, NULL));
+    _dbus_assert(find_subtree(tree, path0, NULL));
+    _dbus_assert(find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree(tree, path4, NULL));
+    _dbus_assert(!find_subtree(tree, path5, NULL));
+    _dbus_assert(!find_subtree(tree, path6, NULL));
+    _dbus_assert(!find_subtree(tree, path7, NULL));
+    _dbus_assert(!find_subtree(tree, path8, NULL));
 
-  _dbus_assert (find_handler (tree, path0, &exact_match) == tree->root &&  exact_match);
-  _dbus_assert (find_handler (tree, path1, &exact_match) != tree->root &&  exact_match);
-  _dbus_assert (find_handler (tree, path2, &exact_match) != tree->root &&  exact_match);
-  _dbus_assert (find_handler (tree, path3, &exact_match) != tree->root &&  exact_match);
-  _dbus_assert (find_handler (tree, path4, &exact_match) != tree->root &&  exact_match);
-  _dbus_assert (find_handler (tree, path5, &exact_match) != tree->root &&  exact_match);
-  _dbus_assert (find_handler (tree, path6, &exact_match) != tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path7, &exact_match) != tree->root && !exact_match);
-  _dbus_assert (find_handler (tree, path8, &exact_match) == tree->root && !exact_match);
+    if (!do_register(tree, path4, TRUE, 4, tree_test_data))
+        goto out;
 
-  if (!do_register (tree, path6, TRUE, 6, tree_test_data))
-    goto out;
+    _dbus_assert(find_subtree(tree, path0, NULL));
+    _dbus_assert(find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(find_subtree(tree, path3, NULL));
+    _dbus_assert(find_subtree(tree, path4, NULL));
+    _dbus_assert(!find_subtree(tree, path5, NULL));
+    _dbus_assert(!find_subtree(tree, path6, NULL));
+    _dbus_assert(!find_subtree(tree, path7, NULL));
+    _dbus_assert(!find_subtree(tree, path8, NULL));
 
-  _dbus_assert (find_subtree (tree, path0, NULL));
-  _dbus_assert (find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (find_subtree (tree, path3, NULL));
-  _dbus_assert (find_subtree (tree, path4, NULL));
-  _dbus_assert (find_subtree (tree, path5, NULL));
-  _dbus_assert (find_subtree (tree, path6, NULL));
-  _dbus_assert (!find_subtree (tree, path7, NULL));
-  _dbus_assert (!find_subtree (tree, path8, NULL));
+    if (!do_register(tree, path5, TRUE, 5, tree_test_data))
+        goto out;
 
-  if (!do_register (tree, path7, TRUE, 7, tree_test_data))
-    goto out;
+    _dbus_assert(find_subtree(tree, path0, NULL));
+    _dbus_assert(find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(find_subtree(tree, path3, NULL));
+    _dbus_assert(find_subtree(tree, path4, NULL));
+    _dbus_assert(find_subtree(tree, path5, NULL));
+    _dbus_assert(!find_subtree(tree, path6, NULL));
+    _dbus_assert(!find_subtree(tree, path7, NULL));
+    _dbus_assert(!find_subtree(tree, path8, NULL));
 
-  _dbus_assert (find_subtree (tree, path0, NULL));
-  _dbus_assert (find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (find_subtree (tree, path3, NULL));
-  _dbus_assert (find_subtree (tree, path4, NULL));
-  _dbus_assert (find_subtree (tree, path5, NULL));
-  _dbus_assert (find_subtree (tree, path6, NULL));
-  _dbus_assert (find_subtree (tree, path7, NULL));
-  _dbus_assert (!find_subtree (tree, path8, NULL));
+    _dbus_assert(find_handler(tree, path0, &exact_match) == tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path1, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path2, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path3, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path4, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path5, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path6, &exact_match) != tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path7, &exact_match) != tree->root && !exact_match);
+    _dbus_assert(find_handler(tree, path8, &exact_match) == tree->root && !exact_match);
 
-  if (!do_register (tree, path8, TRUE, 8, tree_test_data))
-    goto out;
+    if (!do_register(tree, path6, TRUE, 6, tree_test_data))
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path0, NULL));
-  _dbus_assert (find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (find_subtree (tree, path3, NULL));
-  _dbus_assert (find_subtree (tree, path4, NULL));
-  _dbus_assert (find_subtree (tree, path5, NULL));
-  _dbus_assert (find_subtree (tree, path6, NULL));
-  _dbus_assert (find_subtree (tree, path7, NULL));
-  _dbus_assert (find_subtree (tree, path8, NULL));
+    _dbus_assert(find_subtree(tree, path0, NULL));
+    _dbus_assert(find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(find_subtree(tree, path3, NULL));
+    _dbus_assert(find_subtree(tree, path4, NULL));
+    _dbus_assert(find_subtree(tree, path5, NULL));
+    _dbus_assert(find_subtree(tree, path6, NULL));
+    _dbus_assert(!find_subtree(tree, path7, NULL));
+    _dbus_assert(!find_subtree(tree, path8, NULL));
 
-  _dbus_assert (find_handler (tree, path0, &exact_match) == tree->root &&  exact_match);
-  _dbus_assert (find_handler (tree, path1, &exact_match) != tree->root && exact_match);
-  _dbus_assert (find_handler (tree, path2, &exact_match) != tree->root && exact_match);
-  _dbus_assert (find_handler (tree, path3, &exact_match) != tree->root && exact_match);
-  _dbus_assert (find_handler (tree, path4, &exact_match) != tree->root && exact_match);
-  _dbus_assert (find_handler (tree, path5, &exact_match) != tree->root && exact_match);
-  _dbus_assert (find_handler (tree, path6, &exact_match) != tree->root && exact_match);
-  _dbus_assert (find_handler (tree, path7, &exact_match) != tree->root && exact_match);
-  _dbus_assert (find_handler (tree, path8, &exact_match) != tree->root && exact_match);
-  
-  /* test the list_registered function */
+    if (!do_register(tree, path7, TRUE, 7, tree_test_data))
+        goto out;
 
-  {
-    const char *root[] = { NULL };
-    char **child_entries;
-    int nb;
+    _dbus_assert(find_subtree(tree, path0, NULL));
+    _dbus_assert(find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(find_subtree(tree, path3, NULL));
+    _dbus_assert(find_subtree(tree, path4, NULL));
+    _dbus_assert(find_subtree(tree, path5, NULL));
+    _dbus_assert(find_subtree(tree, path6, NULL));
+    _dbus_assert(find_subtree(tree, path7, NULL));
+    _dbus_assert(!find_subtree(tree, path8, NULL));
 
-    _dbus_object_tree_list_registered_unlocked (tree, path1, &child_entries);
-    if (child_entries != NULL)
-      {
-	nb = _dbus_string_array_length ((const char**)child_entries);
-	_dbus_assert (nb == 1);
-	dbus_free_string_array (child_entries);
-      }
+    if (!do_register(tree, path8, TRUE, 8, tree_test_data))
+        goto out;
 
-    _dbus_object_tree_list_registered_unlocked (tree, path2, &child_entries);
-    if (child_entries != NULL)
-      {
-	nb = _dbus_string_array_length ((const char**)child_entries);
-	_dbus_assert (nb == 2);
-	dbus_free_string_array (child_entries);
-      }
+    _dbus_assert(find_subtree(tree, path0, NULL));
+    _dbus_assert(find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(find_subtree(tree, path3, NULL));
+    _dbus_assert(find_subtree(tree, path4, NULL));
+    _dbus_assert(find_subtree(tree, path5, NULL));
+    _dbus_assert(find_subtree(tree, path6, NULL));
+    _dbus_assert(find_subtree(tree, path7, NULL));
+    _dbus_assert(find_subtree(tree, path8, NULL));
 
-    _dbus_object_tree_list_registered_unlocked (tree, path8, &child_entries);
-    if (child_entries != NULL)
-      {
-	nb = _dbus_string_array_length ((const char**)child_entries);
-	_dbus_assert (nb == 0);
-	dbus_free_string_array (child_entries);
-      }
+    _dbus_assert(find_handler(tree, path0, &exact_match) == tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path1, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path2, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path3, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path4, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path5, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path6, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path7, &exact_match) != tree->root && exact_match);
+    _dbus_assert(find_handler(tree, path8, &exact_match) != tree->root && exact_match);
 
-    _dbus_object_tree_list_registered_unlocked (tree, root, &child_entries);
-    if (child_entries != NULL)
-      {
-	nb = _dbus_string_array_length ((const char**)child_entries);
-	_dbus_assert (nb == 3);
-	dbus_free_string_array (child_entries);
-      }
-  }
+    /* test the list_registered function */
 
-  /* Check that destroying tree calls unregister funcs */
-  _dbus_object_tree_unref (tree);
-
-  i = 0;
-  while (i < (int) _DBUS_N_ELEMENTS (tree_test_data))
     {
-      _dbus_assert (tree_test_data[i].handler_unregistered);
-      _dbus_assert (!tree_test_data[i].message_handled);
-      ++i;
+        const char *root[] = { NULL };
+        char **child_entries;
+        int nb;
+
+        _dbus_object_tree_list_registered_unlocked(tree, path1, &child_entries);
+        if (child_entries != NULL) {
+            nb = _dbus_string_array_length((const char **)child_entries);
+            _dbus_assert(nb == 1);
+            dbus_free_string_array(child_entries);
+        }
+
+        _dbus_object_tree_list_registered_unlocked(tree, path2, &child_entries);
+        if (child_entries != NULL) {
+            nb = _dbus_string_array_length((const char **)child_entries);
+            _dbus_assert(nb == 2);
+            dbus_free_string_array(child_entries);
+        }
+
+        _dbus_object_tree_list_registered_unlocked(tree, path8, &child_entries);
+        if (child_entries != NULL) {
+            nb = _dbus_string_array_length((const char **)child_entries);
+            _dbus_assert(nb == 0);
+            dbus_free_string_array(child_entries);
+        }
+
+        _dbus_object_tree_list_registered_unlocked(tree, root, &child_entries);
+        if (child_entries != NULL) {
+            nb = _dbus_string_array_length((const char **)child_entries);
+            _dbus_assert(nb == 3);
+            dbus_free_string_array(child_entries);
+        }
     }
 
-  /* Now start again and try the individual unregister function */
-  tree = _dbus_object_tree_new (NULL);
-  if (tree == NULL)
-    goto out;
+    /* Check that destroying tree calls unregister funcs */
+    _dbus_object_tree_unref(tree);
 
-  if (!do_register (tree, path0, TRUE, 0, tree_test_data))
-    goto out;
-  if (!do_register (tree, path1, TRUE, 1, tree_test_data))
-    goto out;
-  if (!do_register (tree, path2, TRUE, 2, tree_test_data))
-    goto out;
-  if (!do_register (tree, path3, TRUE, 3, tree_test_data))
-    goto out;
-  if (!do_register (tree, path4, TRUE, 4, tree_test_data))
-    goto out;
-  if (!do_register (tree, path5, TRUE, 5, tree_test_data))
-    goto out;
-  if (!do_register (tree, path6, TRUE, 6, tree_test_data))
-    goto out;
-  if (!do_register (tree, path7, TRUE, 7, tree_test_data))
-    goto out;
-  if (!do_register (tree, path8, TRUE, 8, tree_test_data))
-    goto out;
-
-  _dbus_object_tree_unregister_and_unlock (tree, path0);
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path0) == NULL);
-
-  _dbus_assert (!find_subtree (tree, path0, NULL));
-  _dbus_assert (find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (find_subtree (tree, path3, NULL));
-  _dbus_assert (find_subtree (tree, path4, NULL));
-  _dbus_assert (find_subtree (tree, path5, NULL));
-  _dbus_assert (find_subtree (tree, path6, NULL));
-  _dbus_assert (find_subtree (tree, path7, NULL));
-  _dbus_assert (find_subtree (tree, path8, NULL));
-  
-  _dbus_object_tree_unregister_and_unlock (tree, path1);
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path1) == NULL);
-
-  _dbus_assert (!find_subtree (tree, path0, NULL));
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (find_subtree (tree, path3, NULL));
-  _dbus_assert (find_subtree (tree, path4, NULL));
-  _dbus_assert (find_subtree (tree, path5, NULL));
-  _dbus_assert (find_subtree (tree, path6, NULL));
-  _dbus_assert (find_subtree (tree, path7, NULL));
-  _dbus_assert (find_subtree (tree, path8, NULL));
-
-  _dbus_object_tree_unregister_and_unlock (tree, path2);
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path2) == NULL);
-
-  _dbus_assert (!find_subtree (tree, path0, NULL));
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (find_subtree (tree, path3, NULL));
-  _dbus_assert (find_subtree (tree, path4, NULL));
-  _dbus_assert (find_subtree (tree, path5, NULL));
-  _dbus_assert (find_subtree (tree, path6, NULL));
-  _dbus_assert (find_subtree (tree, path7, NULL));
-  _dbus_assert (find_subtree (tree, path8, NULL));
-  
-  _dbus_object_tree_unregister_and_unlock (tree, path3);
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path3) == NULL);
-
-  _dbus_assert (!find_subtree (tree, path0, NULL));
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (find_subtree (tree, path4, NULL));
-  _dbus_assert (find_subtree (tree, path5, NULL));
-  _dbus_assert (find_subtree (tree, path6, NULL));
-  _dbus_assert (find_subtree (tree, path7, NULL));
-  _dbus_assert (find_subtree (tree, path8, NULL));
-  
-  _dbus_object_tree_unregister_and_unlock (tree, path4);
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path4) == NULL);
-
-  _dbus_assert (!find_subtree (tree, path0, NULL));
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree (tree, path4, NULL));
-  _dbus_assert (find_subtree (tree, path5, NULL));
-  _dbus_assert (find_subtree (tree, path6, NULL));
-  _dbus_assert (find_subtree (tree, path7, NULL));
-  _dbus_assert (find_subtree (tree, path8, NULL));
-  
-  _dbus_object_tree_unregister_and_unlock (tree, path5);
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path5) == NULL);
-
-  _dbus_assert (!find_subtree (tree, path0, NULL));
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree (tree, path4, NULL));
-  _dbus_assert (!find_subtree (tree, path5, NULL));
-  _dbus_assert (find_subtree (tree, path6, NULL));
-  _dbus_assert (find_subtree (tree, path7, NULL));
-  _dbus_assert (find_subtree (tree, path8, NULL));
-  
-  _dbus_object_tree_unregister_and_unlock (tree, path6);
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path6) == NULL);
-
-  _dbus_assert (!find_subtree (tree, path0, NULL));
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree (tree, path4, NULL));
-  _dbus_assert (!find_subtree (tree, path5, NULL));
-  _dbus_assert (!find_subtree (tree, path6, NULL));
-  _dbus_assert (find_subtree (tree, path7, NULL));
-  _dbus_assert (find_subtree (tree, path8, NULL));
-
-  _dbus_object_tree_unregister_and_unlock (tree, path7);
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path7) == NULL);
-
-  _dbus_assert (!find_subtree (tree, path0, NULL));
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree (tree, path4, NULL));
-  _dbus_assert (!find_subtree (tree, path5, NULL));
-  _dbus_assert (!find_subtree (tree, path6, NULL));
-  _dbus_assert (!find_subtree (tree, path7, NULL));
-  _dbus_assert (find_subtree (tree, path8, NULL));
-
-  _dbus_object_tree_unregister_and_unlock (tree, path8);
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path8) == NULL);
-
-  _dbus_assert (!find_subtree (tree, path0, NULL));
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree (tree, path4, NULL));
-  _dbus_assert (!find_subtree (tree, path5, NULL));
-  _dbus_assert (!find_subtree (tree, path6, NULL));
-  _dbus_assert (!find_subtree (tree, path7, NULL));
-  _dbus_assert (!find_subtree (tree, path8, NULL));
-  
-  i = 0;
-  while (i < (int) _DBUS_N_ELEMENTS (tree_test_data))
-    {
-      _dbus_assert (tree_test_data[i].handler_unregistered);
-      _dbus_assert (!tree_test_data[i].message_handled);
-      ++i;
+    i = 0;
+    while (i < (int)_DBUS_N_ELEMENTS(tree_test_data)) {
+        _dbus_assert(tree_test_data[i].handler_unregistered);
+        _dbus_assert(!tree_test_data[i].message_handled);
+        ++i;
     }
 
-  /* Test removal of newly-childless unregistered nodes */
-  if (!do_register (tree, path2, TRUE, 2, tree_test_data))
-    goto out;
+    /* Now start again and try the individual unregister function */
+    tree = _dbus_object_tree_new(NULL);
+    if (tree == NULL)
+        goto out;
 
-  _dbus_object_tree_unregister_and_unlock (tree, path2);
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path2));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path1));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path0));
+    if (!do_register(tree, path0, TRUE, 0, tree_test_data))
+        goto out;
+    if (!do_register(tree, path1, TRUE, 1, tree_test_data))
+        goto out;
+    if (!do_register(tree, path2, TRUE, 2, tree_test_data))
+        goto out;
+    if (!do_register(tree, path3, TRUE, 3, tree_test_data))
+        goto out;
+    if (!do_register(tree, path4, TRUE, 4, tree_test_data))
+        goto out;
+    if (!do_register(tree, path5, TRUE, 5, tree_test_data))
+        goto out;
+    if (!do_register(tree, path6, TRUE, 6, tree_test_data))
+        goto out;
+    if (!do_register(tree, path7, TRUE, 7, tree_test_data))
+        goto out;
+    if (!do_register(tree, path8, TRUE, 8, tree_test_data))
+        goto out;
 
-  /* Test that unregistered parents cannot be freed out from under their
+    _dbus_object_tree_unregister_and_unlock(tree, path0);
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path0) == NULL);
+
+    _dbus_assert(!find_subtree(tree, path0, NULL));
+    _dbus_assert(find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(find_subtree(tree, path3, NULL));
+    _dbus_assert(find_subtree(tree, path4, NULL));
+    _dbus_assert(find_subtree(tree, path5, NULL));
+    _dbus_assert(find_subtree(tree, path6, NULL));
+    _dbus_assert(find_subtree(tree, path7, NULL));
+    _dbus_assert(find_subtree(tree, path8, NULL));
+
+    _dbus_object_tree_unregister_and_unlock(tree, path1);
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path1) == NULL);
+
+    _dbus_assert(!find_subtree(tree, path0, NULL));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(find_subtree(tree, path3, NULL));
+    _dbus_assert(find_subtree(tree, path4, NULL));
+    _dbus_assert(find_subtree(tree, path5, NULL));
+    _dbus_assert(find_subtree(tree, path6, NULL));
+    _dbus_assert(find_subtree(tree, path7, NULL));
+    _dbus_assert(find_subtree(tree, path8, NULL));
+
+    _dbus_object_tree_unregister_and_unlock(tree, path2);
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path2) == NULL);
+
+    _dbus_assert(!find_subtree(tree, path0, NULL));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(find_subtree(tree, path3, NULL));
+    _dbus_assert(find_subtree(tree, path4, NULL));
+    _dbus_assert(find_subtree(tree, path5, NULL));
+    _dbus_assert(find_subtree(tree, path6, NULL));
+    _dbus_assert(find_subtree(tree, path7, NULL));
+    _dbus_assert(find_subtree(tree, path8, NULL));
+
+    _dbus_object_tree_unregister_and_unlock(tree, path3);
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path3) == NULL);
+
+    _dbus_assert(!find_subtree(tree, path0, NULL));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(find_subtree(tree, path4, NULL));
+    _dbus_assert(find_subtree(tree, path5, NULL));
+    _dbus_assert(find_subtree(tree, path6, NULL));
+    _dbus_assert(find_subtree(tree, path7, NULL));
+    _dbus_assert(find_subtree(tree, path8, NULL));
+
+    _dbus_object_tree_unregister_and_unlock(tree, path4);
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path4) == NULL);
+
+    _dbus_assert(!find_subtree(tree, path0, NULL));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree(tree, path4, NULL));
+    _dbus_assert(find_subtree(tree, path5, NULL));
+    _dbus_assert(find_subtree(tree, path6, NULL));
+    _dbus_assert(find_subtree(tree, path7, NULL));
+    _dbus_assert(find_subtree(tree, path8, NULL));
+
+    _dbus_object_tree_unregister_and_unlock(tree, path5);
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path5) == NULL);
+
+    _dbus_assert(!find_subtree(tree, path0, NULL));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree(tree, path4, NULL));
+    _dbus_assert(!find_subtree(tree, path5, NULL));
+    _dbus_assert(find_subtree(tree, path6, NULL));
+    _dbus_assert(find_subtree(tree, path7, NULL));
+    _dbus_assert(find_subtree(tree, path8, NULL));
+
+    _dbus_object_tree_unregister_and_unlock(tree, path6);
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path6) == NULL);
+
+    _dbus_assert(!find_subtree(tree, path0, NULL));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree(tree, path4, NULL));
+    _dbus_assert(!find_subtree(tree, path5, NULL));
+    _dbus_assert(!find_subtree(tree, path6, NULL));
+    _dbus_assert(find_subtree(tree, path7, NULL));
+    _dbus_assert(find_subtree(tree, path8, NULL));
+
+    _dbus_object_tree_unregister_and_unlock(tree, path7);
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path7) == NULL);
+
+    _dbus_assert(!find_subtree(tree, path0, NULL));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree(tree, path4, NULL));
+    _dbus_assert(!find_subtree(tree, path5, NULL));
+    _dbus_assert(!find_subtree(tree, path6, NULL));
+    _dbus_assert(!find_subtree(tree, path7, NULL));
+    _dbus_assert(find_subtree(tree, path8, NULL));
+
+    _dbus_object_tree_unregister_and_unlock(tree, path8);
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path8) == NULL);
+
+    _dbus_assert(!find_subtree(tree, path0, NULL));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree(tree, path4, NULL));
+    _dbus_assert(!find_subtree(tree, path5, NULL));
+    _dbus_assert(!find_subtree(tree, path6, NULL));
+    _dbus_assert(!find_subtree(tree, path7, NULL));
+    _dbus_assert(!find_subtree(tree, path8, NULL));
+
+    i = 0;
+    while (i < (int)_DBUS_N_ELEMENTS(tree_test_data)) {
+        _dbus_assert(tree_test_data[i].handler_unregistered);
+        _dbus_assert(!tree_test_data[i].message_handled);
+        ++i;
+    }
+
+    /* Test removal of newly-childless unregistered nodes */
+    if (!do_register(tree, path2, TRUE, 2, tree_test_data))
+        goto out;
+
+    _dbus_object_tree_unregister_and_unlock(tree, path2);
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path2));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path1));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path0));
+
+    /* Test that unregistered parents cannot be freed out from under their
      children */
-  if (!do_register (tree, path2, TRUE, 2, tree_test_data))
-    goto out;
+    if (!do_register(tree, path2, TRUE, 2, tree_test_data))
+        goto out;
 
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path1));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path0));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path1));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path0));
 
 #if 0
   /* This triggers the "Attempted to unregister path ..." warning message */
   _dbus_object_tree_unregister_and_unlock (tree, path1);
 #endif
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path1));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path0));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path1));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path0));
 
-  _dbus_object_tree_unregister_and_unlock (tree, path2);
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path2));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path1));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path0));
+    _dbus_object_tree_unregister_and_unlock(tree, path2);
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path2));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path1));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path0));
 
-  /* Test that registered parents cannot be freed out from under their
+    /* Test that registered parents cannot be freed out from under their
      children, and that if they are unregistered before their children, they
      are still freed when their children are unregistered */
-  if (!do_register (tree, path1, TRUE, 1, tree_test_data))
-    goto out;
-  if (!do_register (tree, path2, TRUE, 2, tree_test_data))
-    goto out;
+    if (!do_register(tree, path1, TRUE, 1, tree_test_data))
+        goto out;
+    if (!do_register(tree, path2, TRUE, 2, tree_test_data))
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
+    _dbus_assert(find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
 
-  _dbus_object_tree_unregister_and_unlock (tree, path1);
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (find_subtree (tree, path2, NULL));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path1));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path0));
+    _dbus_object_tree_unregister_and_unlock(tree, path1);
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(find_subtree(tree, path2, NULL));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path1));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path0));
 
-  _dbus_object_tree_unregister_and_unlock (tree, path2);
-  _dbus_assert (!find_subtree (tree, path1, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path1));
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path2));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path0));
+    _dbus_object_tree_unregister_and_unlock(tree, path2);
+    _dbus_assert(!find_subtree(tree, path1, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path1));
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path2));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path0));
 
-  /* Test with NULL unregister_function and user_data */
-  if (!_dbus_object_tree_register (tree, TRUE, path2,
-                                   &test_vtable,
-                                   NULL,
-                                   NULL))
-    goto out;
+    /* Test with NULL unregister_function and user_data */
+    if (!_dbus_object_tree_register(tree, TRUE, path2, &test_vtable, NULL, NULL))
+        goto out;
 
-  _dbus_assert (_dbus_object_tree_get_user_data_unlocked (tree, path2) == NULL);
-  _dbus_object_tree_unregister_and_unlock (tree, path2);
-  _dbus_assert (!find_subtree (tree, path2, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path2));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path1));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path0));
+    _dbus_assert(_dbus_object_tree_get_user_data_unlocked(tree, path2) == NULL);
+    _dbus_object_tree_unregister_and_unlock(tree, path2);
+    _dbus_assert(!find_subtree(tree, path2, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path2));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path1));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path0));
 
-  /* Test freeing a long path */
-  if (!do_register (tree, path3, TRUE, 3, tree_test_data))
-    goto out;
+    /* Test freeing a long path */
+    if (!do_register(tree, path3, TRUE, 3, tree_test_data))
+        goto out;
 
-  _dbus_object_tree_unregister_and_unlock (tree, path3);
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path3));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path2));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path1));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path0));
+    _dbus_object_tree_unregister_and_unlock(tree, path3);
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path3));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path2));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path1));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path0));
 
-  /* Test freeing multiple children from the same path */
-  if (!do_register (tree, path3, TRUE, 3, tree_test_data))
-    goto out;
-  if (!do_register (tree, path4, TRUE, 4, tree_test_data))
-    goto out;
+    /* Test freeing multiple children from the same path */
+    if (!do_register(tree, path3, TRUE, 3, tree_test_data))
+        goto out;
+    if (!do_register(tree, path4, TRUE, 4, tree_test_data))
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path3, NULL));
-  _dbus_assert (find_subtree (tree, path4, NULL));
+    _dbus_assert(find_subtree(tree, path3, NULL));
+    _dbus_assert(find_subtree(tree, path4, NULL));
 
-  _dbus_object_tree_unregister_and_unlock (tree, path3);
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path3));
-  _dbus_assert (find_subtree (tree, path4, NULL));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path4));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path2));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path1));
+    _dbus_object_tree_unregister_and_unlock(tree, path3);
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path3));
+    _dbus_assert(find_subtree(tree, path4, NULL));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path4));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path2));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path1));
 
-  _dbus_object_tree_unregister_and_unlock (tree, path4);
-  _dbus_assert (!find_subtree (tree, path4, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path4));
-  _dbus_assert (!find_subtree (tree, path3, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path3));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path2));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path1));
+    _dbus_object_tree_unregister_and_unlock(tree, path4);
+    _dbus_assert(!find_subtree(tree, path4, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path4));
+    _dbus_assert(!find_subtree(tree, path3, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path3));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path2));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path1));
 
-  /* Test subtree removal */
-  if (!_dbus_object_tree_register (tree, TRUE, path12,
-                                   &test_vtable,
-                                   NULL,
-                                   NULL))
-    goto out;
+    /* Test subtree removal */
+    if (!_dbus_object_tree_register(tree, TRUE, path12, &test_vtable, NULL, NULL))
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path12, NULL));
+    _dbus_assert(find_subtree(tree, path12, NULL));
 
-  if (!_dbus_object_tree_register (tree, TRUE, path13,
-                                   &test_vtable,
-                                   NULL,
-                                   NULL))
-    goto out;
+    if (!_dbus_object_tree_register(tree, TRUE, path13, &test_vtable, NULL, NULL))
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path13, NULL));
+    _dbus_assert(find_subtree(tree, path13, NULL));
 
-  if (!_dbus_object_tree_register (tree, TRUE, path14,
-                                   &test_vtable,
-                                   NULL,
-                                   NULL))
-    goto out;
+    if (!_dbus_object_tree_register(tree, TRUE, path14, &test_vtable, NULL, NULL))
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path14, NULL));
+    _dbus_assert(find_subtree(tree, path14, NULL));
 
-  _dbus_object_tree_unregister_and_unlock (tree, path12);
+    _dbus_object_tree_unregister_and_unlock(tree, path12);
 
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path12));
-  _dbus_assert (find_subtree (tree, path13, NULL));
-  _dbus_assert (find_subtree (tree, path14, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path9));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path5));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path12));
+    _dbus_assert(find_subtree(tree, path13, NULL));
+    _dbus_assert(find_subtree(tree, path14, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path9));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path5));
 
-  if (!_dbus_object_tree_register (tree, TRUE, path12,
-                                   &test_vtable,
-                                   NULL,
-                                   NULL))
-    goto out;
+    if (!_dbus_object_tree_register(tree, TRUE, path12, &test_vtable, NULL, NULL))
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path12, NULL));
+    _dbus_assert(find_subtree(tree, path12, NULL));
 
-  _dbus_object_tree_unregister_and_unlock (tree, path13);
+    _dbus_object_tree_unregister_and_unlock(tree, path13);
 
-  _dbus_assert (find_subtree (tree, path12, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path13));
-  _dbus_assert (find_subtree (tree, path14, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path10));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path5));
+    _dbus_assert(find_subtree(tree, path12, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path13));
+    _dbus_assert(find_subtree(tree, path14, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path10));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path5));
 
-  if (!_dbus_object_tree_register (tree, TRUE, path13,
-                                   &test_vtable,
-                                   NULL,
-                                   NULL))
-    goto out;
+    if (!_dbus_object_tree_register(tree, TRUE, path13, &test_vtable, NULL, NULL))
+        goto out;
 
-  _dbus_assert (find_subtree (tree, path13, NULL));
+    _dbus_assert(find_subtree(tree, path13, NULL));
 
-  _dbus_object_tree_unregister_and_unlock (tree, path14);
+    _dbus_object_tree_unregister_and_unlock(tree, path14);
 
-  _dbus_assert (find_subtree (tree, path12, NULL));
-  _dbus_assert (find_subtree (tree, path13, NULL));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path14));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path11));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path5));
+    _dbus_assert(find_subtree(tree, path12, NULL));
+    _dbus_assert(find_subtree(tree, path13, NULL));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path14));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path11));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path5));
 
-  _dbus_object_tree_unregister_and_unlock (tree, path12);
+    _dbus_object_tree_unregister_and_unlock(tree, path12);
 
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path12));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path9));
-  _dbus_assert (find_subtree_registered_or_unregistered (tree, path5));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path12));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path9));
+    _dbus_assert(find_subtree_registered_or_unregistered(tree, path5));
 
-  _dbus_object_tree_unregister_and_unlock (tree, path13);
+    _dbus_object_tree_unregister_and_unlock(tree, path13);
 
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path13));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path10));
-  _dbus_assert (!find_subtree_registered_or_unregistered (tree, path5));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path13));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path10));
+    _dbus_assert(!find_subtree_registered_or_unregistered(tree, path5));
 
 #if 0
   /* Test attempting to unregister non-existent paths.  These trigger
@@ -2257,60 +2055,59 @@ object_tree_test_iteration (void        *data,
   _dbus_object_tree_unregister_and_unlock (tree, path4);
 #endif
 
-  /* Register it all again, and test dispatch */
-  
-  if (!do_register (tree, path0, TRUE, 0, tree_test_data))
-    goto out;
-  if (!do_register (tree, path1, FALSE, 1, tree_test_data))
-    goto out;
-  if (!do_register (tree, path2, TRUE, 2, tree_test_data))
-    goto out;
-  if (!do_register (tree, path3, TRUE, 3, tree_test_data))
-    goto out;
-  if (!do_register (tree, path4, TRUE, 4, tree_test_data))
-    goto out;
-  if (!do_register (tree, path5, TRUE, 5, tree_test_data))
-    goto out;
-  if (!do_register (tree, path6, FALSE, 6, tree_test_data))
-    goto out;
-  if (!do_register (tree, path7, TRUE, 7, tree_test_data))
-    goto out;
-  if (!do_register (tree, path8, TRUE, 8, tree_test_data))
-    goto out;
+    /* Register it all again, and test dispatch */
+
+    if (!do_register(tree, path0, TRUE, 0, tree_test_data))
+        goto out;
+    if (!do_register(tree, path1, FALSE, 1, tree_test_data))
+        goto out;
+    if (!do_register(tree, path2, TRUE, 2, tree_test_data))
+        goto out;
+    if (!do_register(tree, path3, TRUE, 3, tree_test_data))
+        goto out;
+    if (!do_register(tree, path4, TRUE, 4, tree_test_data))
+        goto out;
+    if (!do_register(tree, path5, TRUE, 5, tree_test_data))
+        goto out;
+    if (!do_register(tree, path6, FALSE, 6, tree_test_data))
+        goto out;
+    if (!do_register(tree, path7, TRUE, 7, tree_test_data))
+        goto out;
+    if (!do_register(tree, path8, TRUE, 8, tree_test_data))
+        goto out;
 
 #if 0
   spew_tree (tree);
 #endif
 
-  if (!do_test_dispatch (tree, path0, 0, tree_test_data, _DBUS_N_ELEMENTS (tree_test_data)))
-    goto out;
-  if (!do_test_dispatch (tree, path1, 1, tree_test_data, _DBUS_N_ELEMENTS (tree_test_data)))
-    goto out;
-  if (!do_test_dispatch (tree, path2, 2, tree_test_data, _DBUS_N_ELEMENTS (tree_test_data)))
-    goto out;
-  if (!do_test_dispatch (tree, path3, 3, tree_test_data, _DBUS_N_ELEMENTS (tree_test_data)))
-    goto out;
-  if (!do_test_dispatch (tree, path4, 4, tree_test_data, _DBUS_N_ELEMENTS (tree_test_data)))
-    goto out;
-  if (!do_test_dispatch (tree, path5, 5, tree_test_data, _DBUS_N_ELEMENTS (tree_test_data)))
-    goto out;
-  if (!do_test_dispatch (tree, path6, 6, tree_test_data, _DBUS_N_ELEMENTS (tree_test_data)))
-    goto out;
-  if (!do_test_dispatch (tree, path7, 7, tree_test_data, _DBUS_N_ELEMENTS (tree_test_data)))
-    goto out;
-  if (!do_test_dispatch (tree, path8, 8, tree_test_data, _DBUS_N_ELEMENTS (tree_test_data)))
-    goto out;
-  
- out:
-  if (tree)
-    {
-      /* test ref */
-      _dbus_object_tree_ref (tree);
-      _dbus_object_tree_unref (tree);
-      _dbus_object_tree_unref (tree);
+    if (!do_test_dispatch(tree, path0, 0, tree_test_data, _DBUS_N_ELEMENTS(tree_test_data)))
+        goto out;
+    if (!do_test_dispatch(tree, path1, 1, tree_test_data, _DBUS_N_ELEMENTS(tree_test_data)))
+        goto out;
+    if (!do_test_dispatch(tree, path2, 2, tree_test_data, _DBUS_N_ELEMENTS(tree_test_data)))
+        goto out;
+    if (!do_test_dispatch(tree, path3, 3, tree_test_data, _DBUS_N_ELEMENTS(tree_test_data)))
+        goto out;
+    if (!do_test_dispatch(tree, path4, 4, tree_test_data, _DBUS_N_ELEMENTS(tree_test_data)))
+        goto out;
+    if (!do_test_dispatch(tree, path5, 5, tree_test_data, _DBUS_N_ELEMENTS(tree_test_data)))
+        goto out;
+    if (!do_test_dispatch(tree, path6, 6, tree_test_data, _DBUS_N_ELEMENTS(tree_test_data)))
+        goto out;
+    if (!do_test_dispatch(tree, path7, 7, tree_test_data, _DBUS_N_ELEMENTS(tree_test_data)))
+        goto out;
+    if (!do_test_dispatch(tree, path8, 8, tree_test_data, _DBUS_N_ELEMENTS(tree_test_data)))
+        goto out;
+
+out:
+    if (tree) {
+        /* test ref */
+        _dbus_object_tree_ref(tree);
+        _dbus_object_tree_unref(tree);
+        _dbus_object_tree_unref(tree);
     }
 
-  return TRUE;
+    return TRUE;
 }
 
 /**
@@ -2318,12 +2115,9 @@ object_tree_test_iteration (void        *data,
  * Unit test for DBusObjectTree
  * @returns #TRUE on success.
  */
-dbus_bool_t
-_dbus_object_tree_test (const char *test_data_dir _DBUS_GNUC_UNUSED)
+dbus_bool_t _dbus_object_tree_test(const char *test_data_dir _DBUS_GNUC_UNUSED)
 {
-  return _dbus_test_oom_handling ("object tree",
-                                  object_tree_test_iteration,
-                                  NULL);
+    return _dbus_test_oom_handling("object tree", object_tree_test_iteration, NULL);
 }
 
 #endif /* !DOXYGEN_SHOULD_SKIP_THIS */

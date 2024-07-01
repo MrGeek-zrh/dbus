@@ -49,19 +49,20 @@ DBusWatch 结构体在 D-Bus 项目中扮演着非常重要的角色,它用于�
   data - 应用程序可以存储与该监视器相关的任何数据。
   enabled - 指示该监视器是否当前启用。
 */
+// 看起来应该是一个描述符一个DBusWatch
 struct DBusWatch {
-    int refcount; /**< Reference count */
-    DBusPollable fd; /**< File descriptor. */
-    unsigned int flags; /**< Conditions to watch. */
+    int refcount; /**< Reference count. 用于跟踪 DBusWatch 对象的引用次数 */
+    DBusPollable fd; /**< File descriptor. 文件描述符，用于监视 I/O 事件 */
+    unsigned int flags; /**< Conditions to watch. 监视的条件，例如可读、可写等 */
 
-    DBusWatchHandler handler; /**< Watch handler. */
-    void *handler_data; /**< Watch handler data. */
-    DBusFreeFunction free_handler_data_function; /**< Free the watch handler data. */
+    DBusWatchHandler handler; /**< Watch handler. 当文件描述符上发生事件时调用的处理函数 */
+    void *handler_data; /**< Watch handler data. 传递给处理函数的数据 */
+    DBusFreeFunction free_handler_data_function; /**< Free the watch handler data. 释放处理函数数据的函数 */
 
-    void *data; /**< Application data. */
-    DBusFreeFunction free_data_function; /**< Free the application data. */
-    unsigned int enabled : 1; /**< Whether it's enabled. */
-    unsigned int oom_last_time : 1; /**< Whether it was OOM last time. */
+    void *data; /**< Application data. 应用程序特定的数据 */
+    DBusFreeFunction free_data_function; /**< Free the application data. 释放应用程序数据的函数 */
+    unsigned int enabled : 1; /**< Whether it's enabled. 监视是否启用 */
+    unsigned int oom_last_time : 1; /**< Whether it was OOM last time. 上次是否因内存不足而失败 */
 };
 
 dbus_bool_t _dbus_watch_get_enabled(DBusWatch *watch)
@@ -550,6 +551,7 @@ int dbus_watch_get_socket(DBusWatch *watch)
 #endif
 }
 
+// 这个拿到的是服务器的socket id还是客户端的id
 DBusSocket _dbus_watch_get_socket(DBusWatch *watch)
 {
     DBusSocket s;
@@ -681,7 +683,7 @@ dbus_bool_t dbus_watch_handle(DBusWatch *watch, unsigned int flags)
     }
 #endif
 
-   _dbus_return_val_if_fail(_dbus_pollable_is_valid(watch->fd) /* fails if watch was removed */, TRUE);
+    _dbus_return_val_if_fail(_dbus_pollable_is_valid(watch->fd) /* fails if watch was removed */, TRUE);
 
     _dbus_watch_sanitize_condition(watch, &flags);
 

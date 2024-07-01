@@ -49,7 +49,7 @@ typedef struct DBusServerSocket DBusServerSocket;
  */
 struct DBusServerSocket {
     DBusServer base; /**< Parent class members. */
-    int n_fds; /**< Number of active file handles */
+    int n_fds; /**< Number of active file handles */ // 连接到服务器上的连接数？
     DBusSocket *fds; /**< File descriptor or DBUS_SOCKET_INVALID if disconnected. */
     DBusWatch **watch; /**< File descriptor watch. */
     char *socket_name; /**< Name of domain socket, to unlink if appropriate */
@@ -75,7 +75,7 @@ static void socket_finalize(DBusServer *server)
     _dbus_noncefile_delete(&socket_server->noncefile, NULL);
     dbus_free(server);
 }
-
+// TODO: 看起来这里就是处理用户的新socket连接请求的位置了
 /* Return value is just for memory, not other failures. */
 static dbus_bool_t handle_new_client_fd_and_unlock(DBusServer *server, DBusSocket client_fd)
 {
@@ -93,7 +93,7 @@ static dbus_bool_t handle_new_client_fd_and_unlock(DBusServer *server, DBusSocke
         SERVER_UNLOCK(server);
         return TRUE;
     }
-
+    
     transport = _dbus_transport_new_for_socket(client_fd, &server->guid_hex, NULL);
     if (transport == NULL) {
         _dbus_close_socket(client_fd, NULL);
@@ -141,6 +141,7 @@ static dbus_bool_t handle_new_client_fd_and_unlock(DBusServer *server, DBusSocke
     return TRUE;
 }
 
+// 这个watch完全有可能是null
 static dbus_bool_t socket_handle_watch(DBusWatch *watch, unsigned int flags, void *data)
 {
     DBusServer *server = data;
@@ -168,6 +169,7 @@ static dbus_bool_t socket_handle_watch(DBusWatch *watch, unsigned int flags, voi
         DBusSocket listen_fd;
         int saved_errno;
 
+        // 感觉获取到的应该是server socket id
         listen_fd = _dbus_watch_get_socket(watch);
 
         if (socket_server->noncefile)

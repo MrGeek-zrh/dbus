@@ -51,35 +51,89 @@
 #include <signal.h>
 #endif
 
+// 看起来应该是一个总线一个BusContext
 struct BusContext {
     int refcount;
+    // 引用计数，用于跟踪 BusContext 对象的引用次数。
+    // 每当有新的引用指向 BusContext 对象时，refcount 增加；
+    // 每当引用释放时，refcount 减少。当 refcount 变为 0 时，表示对象可以被安全地销毁。
+
     DBusGUID uuid;
+    // UUID，用于唯一标识该 D-Bus 实例。
+
     char *config_file;
+    // 配置文件的路径。用于指定 D-Bus 实例的配置文件。
+
     char *type;
+    // 总线类型，例如 "system" 或 "session"。
+
     char *servicehelper;
+    // 服务辅助程序的路径。用于启动和管理 D-Bus 服务。
+
     char *address;
+    // 总线地址，用于客户端连接到该 D-Bus 实例。
+
     char *pidfile;
+    // PID 文件的路径。用于存储运行该 D-Bus 实例的进程 ID。
+
     char *user;
+    // 运行该 D-Bus 实例的用户名称。
+
     char *log_prefix;
+    // 日志前缀，用于在日志消息前添加特定前缀以便识别。
+
     DBusLoop *loop;
+    // 事件循环，用于处理 I/O 事件和定时器。
+
     DBusList *servers;
+    // 服务器列表，包含所有监听连接的服务器。
+
     BusConnections *connections;
+    // 连接管理器，跟踪所有活跃的客户端连接。
+
     BusActivation *activation;
+    // 服务激活器，用于按需启动 D-Bus 服务。
+
     BusRegistry *registry;
+    // 服务注册表，管理所有已注册的服务。
+
     BusPolicy *policy;
+    // 安全策略管理器，定义访问控制和权限。
+
     BusMatchmaker *matchmaker;
+    // 消息匹配器，用于将消息路由到匹配的接收者。
+
     BusLimits limits;
+    // 总线限制，定义各种资源限制，如最大连接数。
+
     DBusRLimit *initial_fd_limit;
+    // 初始文件描述符限制，用于设置 D-Bus 进程的文件描述符限制。
+
     BusContainers *containers;
+    // 容器管理器，用于管理 D-Bus 实例中的容器。
+
     unsigned int fork : 1;
+    // 是否允许 fork()，用于创建子进程。
+
     unsigned int syslog : 1;
+    // 是否启用 syslog 日志记录。
+
     unsigned int keep_umask : 1;
+    // 是否保持 umask 设置。
+
     unsigned int allow_anonymous : 1;
+    // 是否允许匿名连接。
+
     unsigned int systemd_activation : 1;
+    // 是否启用 systemd 激活。
+
 #ifdef DBUS_ENABLE_EMBEDDED_TESTS
     unsigned int quiet_log : 1;
+    // 是否启用安静日志模式，仅用于嵌入式测试。
 #endif
+
     dbus_bool_t watches_enabled;
+    // 是否启用监视器，用于跟踪文件描述符状态。
 };
 
 static dbus_int32_t server_data_slot = -1;
@@ -793,6 +847,7 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
     }
 
     // 创建容器管理器
+    // 这里的容器是啥？
     context->containers = bus_containers_new();
 
     if (context->containers == NULL) {
@@ -1168,6 +1223,7 @@ BusMatchmaker *bus_context_get_matchmaker(BusContext *context)
     return context->matchmaker;
 }
 
+// context->loop的默认值是多少，在哪里初始化的？在new bus context没看到呀
 DBusLoop *bus_context_get_loop(BusContext *context)
 {
     return context->loop;

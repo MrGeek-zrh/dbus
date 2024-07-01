@@ -26,22 +26,22 @@
 #include <config.h>
 #include <dbus/dbus-pollable-set.h>
 
-DBusPollableSet *
-_dbus_pollable_set_new (int size_hint)
+// 根据平台选择不同的多路复用的实现，linux下就是epoll
+DBusPollableSet *_dbus_pollable_set_new(int size_hint)
 {
-  DBusPollableSet *ret;
+    DBusPollableSet *ret;
 
 #ifdef DBUS_HAVE_LINUX_EPOLL
-  ret = _dbus_pollable_set_epoll_new ();
+    ret = _dbus_pollable_set_epoll_new();
 
-  if (ret != NULL)
-    return ret;
+    if (ret != NULL)
+        return ret;
 #endif
 
-  ret = _dbus_pollable_set_poll_new (size_hint);
+    ret = _dbus_pollable_set_poll_new(size_hint);
 
-  if (ret != NULL)
-    return ret;
+    if (ret != NULL)
+        return ret;
 
-  return NULL;
+    return NULL;
 }

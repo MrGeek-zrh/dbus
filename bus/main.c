@@ -231,6 +231,7 @@ static void check_two_pid_descriptors(const DBusString *pid_fd, const char *extr
 }
 
 #ifdef DBUS_UNIX
+// 什么时候触发这个函数?
 static dbus_bool_t handle_reload_watch(DBusWatch *watch, unsigned int flags, void *data)
 {
     DBusError error;
@@ -292,28 +293,41 @@ static dbus_bool_t handle_reload_watch(DBusWatch *watch, unsigned int flags, voi
     return TRUE;
 }
 
+/**
+ * 设置重载管道并将其添加到事件循环中。
+ *
+ * @param loop 事件循环对象。
+ */
 static void setup_reload_pipe(DBusLoop *loop)
 {
     DBusError error;
     DBusWatch *watch;
 
+    // 初始化错误对象
     dbus_error_init(&error);
 
+    // 创建一个双向管道（socketpair），用于在不同进程之间进行通信
+    // 如果创建失败，则打印警告信息并退出程序
     if (!_dbus_socketpair(&reload_pipe[0], &reload_pipe[1], TRUE, &error)) {
         _dbus_warn("Unable to create reload pipe: %s", error.message);
         dbus_error_free(&error);
         exit(1);
     }
 
+    // 创建一个新的 DBusWatch 对象，用于监视管道的读端是否可读
+    // 当管道的读端有数据可读时，将调用 handle_reload_watch 函数进行处理
     watch = _dbus_watch_new(_dbus_socket_get_pollable(reload_pipe[RELOAD_READ_END]), DBUS_WATCH_READABLE, TRUE,
                             handle_reload_watch, NULL, NULL);
 
+    // 如果创建 DBusWatch 对象失败，则打印警告信息并退出程序
     if (watch == NULL) {
         _dbus_warn("Unable to create reload watch: %s", error.message);
         dbus_error_free(&error);
         exit(1);
     }
 
+    // 将 DBusWatch 对象添加到事件循环中
+    // 如果添加失败，则打印警告信息并退出程序
     if (!_dbus_loop_add_watch(loop, watch)) {
         _dbus_warn("Unable to add reload watch to main loop: %s", error.message);
         dbus_error_free(&error);
@@ -605,7 +619,7 @@ int main(int argc, char **argv)
     _dbus_verbose("We are on D-Bus...\n");
     _dbus_daemon_report_ready();
     // 进入 D-Bus 主循环
-    // 这里似乎是有一个默认的最大循环次数的, 1000000000 应该是这个数值
+    // 这里似乎是有一个默认的最大循环次数的
     _dbus_loop_run(bus_context_get_loop(context));
 
     // 清理和退出

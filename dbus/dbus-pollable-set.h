@@ -83,7 +83,7 @@ static inline void _dbus_pollable_set_disable(DBusPollableSet *self, DBusPollabl
 {
     (self->cls->disable)(self, fd);
 }
-
+// 调用epoll_wait()来轮询文件描述符的事件，获取到就绪的事件
 static inline int _dbus_pollable_set_poll(DBusPollableSet *self, DBusPollableEvent *revents, int max_events,
                                           int timeout_ms)
 {

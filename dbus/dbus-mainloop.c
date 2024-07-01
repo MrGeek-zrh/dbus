@@ -39,13 +39,13 @@ struct DBusLoop {
     int refcount; // 引用计数
     /** DBusPollable => dbus_malloc'd DBusList ** of references to DBusWatch */
     DBusHashTable *watches; // 哈希表,用于存储文件描述符及其关联的 DBusWatch 对象列表
-    DBusPollableSet *pollable_set; // 用于高效监视多个文件描述符的 DBusPollableSet 对象
+    DBusPollableSet *pollable_set; // linux环境下，就可以理解成epoll_create1创建的epoll实例集合
     DBusList *timeouts; // 超时事件列表
     int callback_list_serial; // 回调列表的序列号,用于检测回调列表是否被修改
     int watch_count; // 监视器 (DBusWatch) 的数量
     int timeout_count; // 超时事件的数量
     int depth; /**< number of recursive runs */ // 递归运行的深度
-    DBusList *need_dispatch; // 需要分发的消息列表
+    DBusList *need_dispatch; // 需要分发的消息列表。TODO: 为什么需要这个列表？
     /** TRUE if we will skip a watch next time because it was OOM; becomes
      * FALSE between polling, and dealing with the results of the poll */
     unsigned oom_watch_pending : 1; // 标记是否有由于内存不足而被跳过的监视器
@@ -245,37 +245,54 @@ static void refresh_watches_for_fd(DBusLoop *loop, DBusList **watches, DBusPolla
         _dbus_pollable_set_disable(loop->pollable_set, fd);
 }
 
+/**
+ * @brief 在事件循环中添加一个监视器
+ *
+ * 这个函数将一个监视器添加到事件循环中，并确保相应的文件描述符在事件循环的监视器表中有一个条目。
+ *
+ * @param loop 指向事件循环的指针
+ * @param watch 指向要添加的监视器的指针
+ * @returns 如果成功添加监视器，返回 TRUE；否则返回 FALSE
+ */
 dbus_bool_t _dbus_loop_add_watch(DBusLoop *loop, DBusWatch *watch)
 {
     DBusPollable fd;
     DBusList **watches;
 
+    // 获取监视器的文件描述符
     fd = _dbus_watch_get_pollable(watch);
+    // 确保文件描述符有效
     _dbus_assert(_dbus_pollable_is_valid(fd));
 
+    // 确保在监视器表中有该文件描述符的条目
     watches = ensure_watch_table_entry(loop, fd);
 
+    // 如果条目为空，返回 FALSE
     if (watches == NULL)
         return FALSE;
 
+    // 尝试将监视器添加到该条目中
     if (!_dbus_list_append(watches, _dbus_watch_ref(watch))) {
+        // 如果添加失败，释放监视器引用并清理条目
         _dbus_watch_unref(watch);
         gc_watch_table_entry(loop, watches, fd);
-
         return FALSE;
     }
 
     if (_dbus_list_length_is_one(watches)) {
+        // 尝试将文件描述符添加到事件循环的 pollable 集合中,这里是将客户端fd添加到ready set中
         if (!_dbus_pollable_set_add(loop->pollable_set, fd, dbus_watch_get_flags(watch),
                                     dbus_watch_get_enabled(watch))) {
+            // 如果添加失败，移除文件描述符对应的监视器表条目
             _dbus_hash_table_remove_pollable(loop->watches, fd);
             return FALSE;
         }
     } else {
-        /* we're modifying, not adding, which can't fail with OOM */
+        // 如果不是第一个监视器，刷新该文件描述符的所有监视器
         refresh_watches_for_fd(loop, watches, fd);
     }
 
+    // 更新事件循环的回调列表序列号和监视器计数
     loop->callback_list_serial += 1;
     loop->watch_count += 1;
     return TRUE;
@@ -444,7 +461,7 @@ static dbus_bool_t check_timeout(long tv_sec, long tv_usec, TimeoutCallback *tcb
     return *timeout == 0;
 }
 
-// 分发 D-Bus 连接上挂起的消息
+// 分发 D-Bus 连接上的消息
 dbus_bool_t _dbus_loop_dispatch(DBusLoop *loop)
 {
 #if MAINLOOP_SPEW
@@ -618,6 +635,8 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
         retval = TRUE; // 返回 TRUE 以继续循环,因为我们不知道被跳过的事件是否已经就绪
     }
 
+    // TODO
+    // 是和多线程环境中确保回调函数列表一致性相关？
     initial_serial = loop->callback_list_serial;
 
     // 处理到期的超时事件
@@ -692,7 +711,7 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
                 cull_watches_for_invalid_fd(loop, ready_fds[i].fd);
                 goto next_iteration;
             }
-
+            // 这里flags 为1,也就是readable事件.这个fd感觉是系统总线的fd,所以这里是readable事件
             condition = ready_fds[i].flags;
             _dbus_assert((condition & _DBUS_WATCH_NVAL) == 0);
 
@@ -700,6 +719,7 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
             if (condition == 0)
                 continue;
 
+            // 查找与该服务端文件描述符相关的监视器
             watches = _dbus_hash_table_lookup_pollable(loop->watches, ready_fds[i].fd);
 
             if (watches == NULL)
@@ -707,6 +727,7 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
 
             any_oom = FALSE;
 
+            // 一个服务端文件描述符可以监视多个客户端的连接,因此需要遍历所有监视器
             // 调用与该文件描述符相关的所有监视器的回调函数
             for (link = _dbus_list_get_first_link(watches); link != NULL; link = next) {
                 DBusWatch *watch = link->data;
@@ -715,7 +736,7 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
 
                 if (dbus_watch_get_enabled(watch)) {
                     dbus_bool_t oom;
-
+                    // 这里的回调函数是socket_handle_watch
                     oom = !dbus_watch_handle(watch, condition);
 
                     if (oom) {

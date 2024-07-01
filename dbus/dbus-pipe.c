@@ -31,11 +31,9 @@
  * @param pipe the pipe
  * @param fd the file descriptor to init from 
  */
-void
-_dbus_pipe_init (DBusPipe *pipe,
-                 int       fd)
+void _dbus_pipe_init(DBusPipe *pipe, int fd)
 {
-  pipe->fd = fd;
+    pipe->fd = fd;
 }
 
 /**
@@ -43,10 +41,9 @@ _dbus_pipe_init (DBusPipe *pipe,
  *
  * @param pipe the pipe
  */
-void
-_dbus_pipe_init_stdout (DBusPipe *pipe)
+void _dbus_pipe_init_stdout(DBusPipe *pipe)
 {
-  _dbus_pipe_init (pipe, 1);
+    _dbus_pipe_init(pipe, 1);
 }
 
 /**
@@ -56,10 +53,9 @@ _dbus_pipe_init_stdout (DBusPipe *pipe)
  * @param pipe the pipe instance
  * @returns #FALSE if pipe is not valid
  */
-dbus_bool_t
-_dbus_pipe_is_valid(DBusPipe *pipe)
+dbus_bool_t _dbus_pipe_is_valid(DBusPipe *pipe)
 {
-  return pipe->fd >= 0;
+    return pipe->fd >= 0;
 }
 
 /**
@@ -68,18 +64,17 @@ _dbus_pipe_is_valid(DBusPipe *pipe)
  * @param pipe the pipe instance
  * @returns #TRUE if pipe is one of the standard out/err channels
  */
-dbus_bool_t
-_dbus_pipe_is_stdout_or_stderr (DBusPipe *pipe)
+dbus_bool_t _dbus_pipe_is_stdout_or_stderr(DBusPipe *pipe)
 {
-  return pipe->fd == 1 || pipe->fd == 2;
+    return pipe->fd == 1 || pipe->fd == 2;
 }
 
 /**
  * Initializes a pipe to an invalid value.
  * @param pipe the pipe
  */
-void
-_dbus_pipe_invalidate (DBusPipe *pipe)
+ // 为啥是-1？
+void _dbus_pipe_invalidate(DBusPipe *pipe)
 {
-  pipe->fd = -1;
+    pipe->fd = -1;
 }

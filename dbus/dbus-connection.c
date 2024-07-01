@@ -4077,6 +4077,15 @@ static DBusHandlerResult _dbus_connection_run_builtin_filters_unlocked_no_update
  * @param connection the connection
  * @returns dispatch status, see dbus_connection_get_dispatch_status()
  */
+/**
+ * @brief 分发消息并处理 DBus 连接的调度
+ *
+ * 这个函数从连接的消息队列中获取下一条消息，并依次通过挂起调用、内建过滤器、自定义过滤器、
+ * 对象路径处理函数等处理它。根据消息处理的结果更新连接的调度状态。
+ *
+ * @param connection 指向 DBusConnection 对象的指针
+ * @returns DBusDispatchStatus，指示消息调度的状态
+ */
 DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
 {
     DBusMessage *message;
@@ -4087,38 +4096,44 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     DBusDispatchStatus status;
     dbus_bool_t found_object;
 
+    // 检查连接对象是否为空
     _dbus_return_val_if_fail(connection != NULL, DBUS_DISPATCH_COMPLETE);
 
     _dbus_verbose("\n");
 
     CONNECTION_LOCK(connection);
+
+    // 获取当前的调度状态
     status = _dbus_connection_get_dispatch_status_unlocked(connection);
     if (status != DBUS_DISPATCH_DATA_REMAINS) {
-        /* unlocks and calls out to user code */
+        // 如果没有需要处理的数据，解锁并更新调度状态
         _dbus_connection_update_dispatch_status_and_unlock(connection, status);
         return status;
     }
 
-    /* We need to ref the connection since the callback could potentially
-   * drop the last ref to it
-   */
+    // 引用连接对象以防止在回调中被释放
     _dbus_connection_ref_unlocked(connection);
 
+    // 获取调度权限
     _dbus_connection_acquire_dispatch(connection);
     HAVE_LOCK_CHECK(connection);
 
+    // 从连接的消息队列中弹出下一条消息
     message_link = _dbus_connection_pop_message_link_unlocked(connection);
     if (message_link == NULL) {
-        /* another thread dispatched our stuff */
-
+        // 其他线程已调度了消息
         _dbus_verbose("another thread dispatched message (during acquire_dispatch above)\n");
 
+        // 释放调度权限
         _dbus_connection_release_dispatch(connection);
 
+        // 获取当前的调度状态
         status = _dbus_connection_get_dispatch_status_unlocked(connection);
 
+        // 解锁并更新调度状态
         _dbus_connection_update_dispatch_status_and_unlock(connection, status);
 
+        // 解除连接对象的引用
         dbus_connection_unref(connection);
 
         return status;
@@ -4134,19 +4149,13 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
 
     result = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
-    /* Pending call handling must be first, because if you do
-   * dbus_connection_send_with_reply_and_block() or
-   * dbus_pending_call_block() then no handlers/filters will be run on
-   * the reply. We want consistent semantics in the case where we
-   * dbus_connection_dispatch() the reply.
-   */
-
+    // 挂起调用处理必须首先进行
     reply_serial = dbus_message_get_reply_serial(message);
     pending = _dbus_hash_table_lookup_int(connection->pending_replies, reply_serial);
     if (pending) {
         _dbus_verbose("Dispatching a pending reply\n");
         complete_pending_call_and_unlock(connection, pending, message);
-        pending = NULL; /* it's probably unref'd */
+        pending = NULL; // 挂起调用可能已被解除引用
 
         CONNECTION_LOCK(connection);
         _dbus_verbose("pending call completed in dispatch\n");
@@ -4154,33 +4163,33 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
         goto out;
     }
 
-    /* If skipping builtin filters, we are probably a monitor. */
+    // 如果内建过滤器已启用，则运行内建过滤器
     if (connection->builtin_filters_enabled) {
         result = _dbus_connection_run_builtin_filters_unlocked_no_update(connection, message);
         if (result != DBUS_HANDLER_RESULT_NOT_YET_HANDLED)
             goto out;
     }
 
+    // 复制过滤器列表
     if (!_dbus_list_copy(&connection->filter_list, &filter_list_copy)) {
         _dbus_connection_release_dispatch(connection);
         HAVE_LOCK_CHECK(connection);
 
         _dbus_connection_failed_pop(connection, message_link);
 
-        /* unlocks and calls user code */
+        // 解锁并更新调度状态
         _dbus_connection_update_dispatch_status_and_unlock(connection, DBUS_DISPATCH_NEED_MEMORY);
         dbus_connection_unref(connection);
 
         return DBUS_DISPATCH_NEED_MEMORY;
     }
 
+    // 引用过滤器
     for (link = _dbus_list_get_first_link(&filter_list_copy); link != NULL;
          link = _dbus_list_get_next_link(&filter_list_copy, link))
         _dbus_message_filter_ref(link->data);
 
-    /* We're still protected from dispatch() reentrancy here
-   * since we acquired the dispatcher
-   */
+    // 解锁连接，开始调用过滤器
     CONNECTION_UNLOCK(connection);
 
     link = _dbus_list_get_first_link(&filter_list_copy);
@@ -4215,9 +4224,7 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
         goto out;
     }
 
-    /* We're still protected from dispatch() reentrancy here
-   * since we acquired the dispatcher
-   */
+    // 对象路径处理
     _dbus_verbose("  running object path dispatch on message %p (%s %s %s '%s')\n", message,
                   dbus_message_type_to_string(dbus_message_get_type(message)),
                   dbus_message_get_interface(message) ? dbus_message_get_interface(message) : "no interface",
@@ -4234,6 +4241,7 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
         goto out;
     }
 
+    // 如果消息是方法调用，但未被处理，发送未知方法错误
     if (dbus_message_get_type(message) == DBUS_MESSAGE_TYPE_METHOD_CALL) {
         DBusMessage *reply;
         DBusString str;
@@ -4280,8 +4288,7 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
 
         if (preallocated == NULL) {
             _dbus_list_free_link(expire_link);
-            /* It's OK that this is finalized, because it hasn't been seen by
-           * anything that could attach user callbacks */
+            // 由于尚未被任何对象看到，可以安全地释放
             dbus_message_unref(reply);
             result = DBUS_HANDLER_RESULT_NEED_MEMORY;
             _dbus_verbose("no memory for error send in dispatch\n");
@@ -4289,7 +4296,7 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
         }
 
         _dbus_connection_send_preallocated_unlocked_no_update(connection, preallocated, reply, NULL);
-        /* reply will be freed when we release the lock */
+        // 回复将在释放锁时被释放
         _dbus_list_prepend_link(&connection->expired_messages, expire_link);
 
         result = DBUS_HANDLER_RESULT_HANDLED;
@@ -4306,28 +4313,32 @@ out:
         _dbus_verbose("out of memory\n");
 
         /* Put message back, and we'll start over.
-       * Yes this means handlers must be idempotent if they
-       * don't return HANDLED; c'est la vie.
-       */
+         * Yes this means handlers must be idempotent if they
+         * don't return HANDLED; c'est la vie.
+         */
+        // 如果内存不足，将消息放回队列，并重新开始
         _dbus_connection_putback_message_link_unlocked(connection, message_link);
-        /* now we don't want to free them */
+        // 现在我们不想释放它们
         message_link = NULL;
         message = NULL;
     } else {
         _dbus_verbose(" ... done dispatching\n");
     }
 
+    // 释放调度权限
     _dbus_connection_release_dispatch(connection);
     HAVE_LOCK_CHECK(connection);
 
     if (message != NULL) {
         /* We don't want this message to count in maximum message limits when
-       * computing the dispatch status, below. We have to drop the lock
-       * temporarily, because finalizing a message can trigger callbacks.
-       *
-       * We have a reference to the connection, and we don't use any cached
-       * pointers to the connection's internals below this point, so it should
-       * be safe to drop the lock and take it back. */
+         * computing the dispatch status, below. We have to drop the lock
+         * temporarily, because finalizing a message can trigger callbacks.
+         *
+         * We have a reference to the connection, and we don't use any cached
+         * pointers to the connection's internals below this point, so it should
+         * be safe to drop the lock and take it back. */
+        // 我们不希望在计算调度状态时，这条消息算在最大消息限制内
+        // 我们必须临时释放锁，因为最终处理消息可能会触发回调
         CONNECTION_UNLOCK(connection);
         dbus_message_unref(message);
         CONNECTION_LOCK(connection);
@@ -4337,11 +4348,13 @@ out:
         _dbus_list_free_link(message_link);
 
     _dbus_verbose("before final status update\n");
+    // 获取当前的调度状态
     status = _dbus_connection_get_dispatch_status_unlocked(connection);
 
-    /* unlocks and calls user code */
+    // 解锁并更新调度状态
     _dbus_connection_update_dispatch_status_and_unlock(connection, status);
 
+    // 解除连接对象的引用
     dbus_connection_unref(connection);
 
     return status;
@@ -4408,6 +4421,19 @@ out:
  * @param free_data_function function to be called to free the data.
  * @returns #FALSE on failure (no memory)
  */
+/**
+ * @brief 为 DBusConnection 设置监视器函数
+ *
+ * 这个函数用于为 DBusConnection 设置用于处理 I/O 事件的监视器函数。
+ *
+ * @param connection DBusConnection 指针
+ * @param add_function 用于添加监视器的函数
+ * @param remove_function 用于移除监视器的函数
+ * @param toggled_function 用于切换监视器状态的函数
+ * @param data 传递给监视器函数的用户数据
+ * @param free_data_function 用于释放用户数据的函数
+ * @returns 如果设置成功，返回 TRUE；否则返回 FALSE
+ */
 dbus_bool_t dbus_connection_set_watch_functions(DBusConnection *connection, DBusAddWatchFunction add_function,
                                                 DBusRemoveWatchFunction remove_function,
                                                 DBusWatchToggledFunction toggled_function, void *data,
@@ -4415,15 +4441,20 @@ dbus_bool_t dbus_connection_set_watch_functions(DBusConnection *connection, DBus
 {
     dbus_bool_t retval;
 
+    // 检查 connection 是否为 NULL，如果为 NULL，则返回 FALSE
     _dbus_return_val_if_fail(connection != NULL, FALSE);
 
+    // 获取连接的锁，以确保线程安全
     CONNECTION_LOCK(connection);
 
+    // 设置监视器函数
     retval = _dbus_watch_list_set_functions(connection->watches, add_function, remove_function, toggled_function, data,
                                             free_data_function);
 
+    // 释放连接的锁
     CONNECTION_UNLOCK(connection);
 
+    // 返回设置结果
     return retval;
 }
 
@@ -5432,6 +5463,7 @@ void dbus_connection_free_data_slot(dbus_int32_t *slot_p)
  * @param free_data_func finalizer function for the data
  * @returns #TRUE if there was enough memory to store the data
  */
+// 在 dbus-daemon 中，有时候需要在一个 DBusConnection 上存储额外的数据，而这些数据不适合直接放在 DBusConnection 结构体中。使用数据槽（data slot）机制，可以动态地将额外的数据附加到 DBusConnection 上，而不需要更改其数据结构。这提供了一种灵活的方式来扩展 DBusConnection 的功能。
 dbus_bool_t dbus_connection_set_data(DBusConnection *connection, dbus_int32_t slot, void *data,
                                      DBusFreeFunction free_data_func)
 {
