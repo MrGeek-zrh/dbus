@@ -748,6 +748,7 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
     }
 
     // 创建主循环对象
+    // TODO: 这是一个重点
     context->loop = _dbus_loop_new();
     if (context->loop == NULL) {
         BUS_SET_OOM(error);
@@ -758,6 +759,7 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
     context->watches_enabled = TRUE;
 
     // 创建对象注册表
+    // TODO
     context->registry = bus_registry_new(context);
     if (context->registry == NULL) {
         BUS_SET_OOM(error);
@@ -772,18 +774,21 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
     }
 
     // 处理只需执行一次的配置选项
+    // 哪些是只需要执行一次的配置选项呢？
+    // TODO
     if (!process_config_first_time_only(context, parser, address, flags, error)) {
         _DBUS_ASSERT_ERROR_IS_SET(error);
         goto failed;
     }
 
     // 处理每次都需要执行的配置选项
+    // 哪些是每次都需要执行的配置选项呢？
     if (!process_config_every_time(context, parser, FALSE, error)) {
         _DBUS_ASSERT_ERROR_IS_SET(error);
         goto failed;
     }
 
-    // 获取另一个服务器数据槽的引用,以便 BusContext 拥有它
+    // 分配一个数据槽id,用于存放 BusContext 的数据
     if (!dbus_server_allocate_data_slot(&server_data_slot))
         _dbus_assert_not_reached("second ref of server data slot failed");
 
@@ -832,14 +837,15 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
     }
 #endif
 
-    // 创建连接管理器
+    // 创建连接管理器，管理当前bus总线的所有连接
     context->connections = bus_connections_new(context);
     if (context->connections == NULL) {
         BUS_SET_OOM(error);
         goto failed;
     }
 
-    // 创建匹配器
+    // 创建匹配器，用于将消息路由到匹配的接收者。
+    // 怎么工作的呢？
     context->matchmaker = bus_matchmaker_new();
     if (context->matchmaker == NULL) {
         BUS_SET_OOM(error);
@@ -848,6 +854,7 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
 
     // 创建容器管理器
     // 这里的容器是啥？
+    // 先不管吧
     context->containers = bus_containers_new();
 
     if (context->containers == NULL) {
@@ -894,6 +901,7 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
         _dbus_pipe_close(print_pid_pipe, NULL);
 
     // 提高文件描述符限制
+    // TODO
     raise_file_descriptor_limit(context);
 
     // 如果需要,切换到指定的用户身份

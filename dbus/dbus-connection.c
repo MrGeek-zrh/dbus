@@ -289,6 +289,7 @@ struct DBusConnection {
 
     DBusHashTable *
             pending_replies; /**< Hash of message serials to #DBusPendingCall. 将消息序列号映射到 DBusPendingCall 的哈希表。 */
+    // 用于存储当前等待回复的消息的哈希表,key是message的序列号,value是
 
     dbus_uint32_t
             client_serial; /**< Client serial. Increments each time a message is sent 客户端序列号，每次发送消息时递增。 */
@@ -2058,15 +2059,35 @@ static void connection_timeout_and_complete_all_pending_calls_unlocked(DBusConne
     HAVE_LOCK_CHECK(connection);
 }
 
+/**
+ * 完成等待回复的调用并解锁连接。
+ *
+ * 该函数用于处理已收到的回复消息，完成等待回复的调用，并调用相应的回调函数。
+ * 它首先设置回复消息，然后启动和完成等待调用的完成过程。
+ *
+ * @param connection 当前的 DBus 连接。
+ * @param pending 等待回复的 DBusPendingCall 对象。
+ * @param message 收到的回复消息。
+ */
+// TODO
 static void complete_pending_call_and_unlock(DBusConnection *connection, DBusPendingCall *pending, DBusMessage *message)
 {
+    // 将收到的回复消息设置到 pending 对象中
     _dbus_pending_call_set_reply_unlocked(pending, message);
-    _dbus_pending_call_ref_unlocked(pending); /* in case there's no app with a ref held */
+
+    // 增加 pending 对象的引用计数，以防应用程序没有持有引用
+    _dbus_pending_call_ref_unlocked(pending);
+
+    // 开始处理 pending 调用的完成过程
     _dbus_pending_call_start_completion_unlocked(pending);
+
+    // 从连接中分离 pending 调用，并解锁连接
     _dbus_connection_detach_pending_call_and_unlock(connection, pending);
 
-    /* Must be called unlocked since it invokes app callback */
+    // 必须在未加锁的情况下调用此函数，因为它会调用应用程序的回调函数
     _dbus_pending_call_finish_completion(pending);
+
+    // 释放 pending 对象的引用
     dbus_pending_call_unref(pending);
 }
 
@@ -4140,6 +4161,27 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     }
 
     message = message_link->data;
+    DBusMessage *msg = message;
+    const char *path = dbus_message_get_path(msg);
+    const char *interface = dbus_message_get_interface(msg);
+    // 通过debug，似乎发现member不是Introspect，而是hello
+    // 似乎这个函数会被调用多次，其中有一次会是传过来的函数名😂目前还不太清楚这些调用过程的作用
+    const char *member = dbus_message_get_member(msg);
+    const char *destination = dbus_message_get_destination(msg);
+    const char *sender = dbus_message_get_sender(msg);
+    const char *signature = dbus_message_get_signature(msg);
+    // int unix_fds = dbus_message_get_unix_fds(msg);
+
+    printf("Received message:\n");
+    printf("  Path: %s\n", path);
+    printf("  Interface: %s\n", interface);
+    printf("  Member: %s\n", member);
+    printf("  Destination: %s\n", destination);
+    printf("  Sender: %s\n", sender);
+    printf("  Signature: %s\n", signature);
+    // printf("  Unix FDs: %d\n", unix_fds);
+
+    // 尝试解析message，解析出自己增加的客户端选项：--checkpoint
 
     _dbus_verbose(" dispatching message %p (%s %s %s '%s')\n", message,
                   dbus_message_type_to_string(dbus_message_get_type(message)),
@@ -4149,13 +4191,15 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
 
     result = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
-    // 挂起调用处理必须首先进行
+    // 获取消息的序列号
     reply_serial = dbus_message_get_reply_serial(message);
+    // pendingcall 可以用来追踪等待回复的消息
+    // 这里其实还是不太明白具体是用来做什么
     pending = _dbus_hash_table_lookup_int(connection->pending_replies, reply_serial);
     if (pending) {
         _dbus_verbose("Dispatching a pending reply\n");
         complete_pending_call_and_unlock(connection, pending, message);
-        pending = NULL; // 挂起调用可能已被解除引用
+        pending = NULL;
 
         CONNECTION_LOCK(connection);
         _dbus_verbose("pending call completed in dispatch\n");

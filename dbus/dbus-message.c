@@ -1054,15 +1054,28 @@ dbus_bool_t dbus_message_set_reply_serial(DBusMessage *message, dbus_uint32_t re
  * @param message the message
  * @returns the reply serial
  */
+/**
+ * 获取消息的回复序列号。
+ *
+ * 此函数用于从给定的DBus消息中提取回复序列号。如果消息包含回复序列号字段，
+ * 则返回该字段的值；否则，返回0。
+ *
+ * @param message 要获取回复序列号的DBus消息。
+ * @returns 如果消息包含回复序列号字段，返回其值；否则，返回0。
+ */
 dbus_uint32_t dbus_message_get_reply_serial(DBusMessage *message)
 {
-    dbus_uint32_t v_UINT32;
+    dbus_uint32_t v_UINT32; // 用于存储回复序列号的临时变量
 
+    // 检查传入的消息指针是否为NULL，如果是，则返回0
     _dbus_return_val_if_fail(message != NULL, 0);
 
+    // 从消息头部中获取回复序列号字段的值
     if (_dbus_header_get_field_basic(&message->header, DBUS_HEADER_FIELD_REPLY_SERIAL, DBUS_TYPE_UINT32, &v_UINT32))
+        // 如果成功获取到回复序列号，返回其值
         return v_UINT32;
     else
+        // 如果消息中没有回复序列号字段，返回0
         return 0;
 }
 

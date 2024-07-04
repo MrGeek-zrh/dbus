@@ -538,6 +538,8 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
         goto next_iteration;
 
     timeout = -1;
+    // TODO: 这里的timeout是什么意思？
+    // 这个timeoout_count的作用是啥？
     if (loop->timeout_count > 0) {
         long tv_sec;
         long tv_usec;

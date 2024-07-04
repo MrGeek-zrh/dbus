@@ -353,6 +353,7 @@ static void close_reload_pipe(DBusWatch **watch)
 int main(int argc, char **argv)
 {
     DBusError error;
+    // TODO: config_file 的路径是多少？
     DBusString config_file;
     DBusString address;
     DBusString addr_fd;
@@ -370,6 +371,7 @@ int main(int argc, char **argv)
 #ifdef DBUS_UNIX
     const char *error_str;
 
+    // TODO
     if (!_dbus_ensure_standard_fds(DBUS_FORCE_STDIN_NULL, &error_str)) {
         fprintf(stderr, "dbus-daemon: fatal error setting up standard fds: %s: %s\n", error_str, _dbus_strerror(errno));
         return 1;
@@ -610,6 +612,7 @@ int main(int argc, char **argv)
 
 #ifdef DBUS_UNIX
     // 在 Unix 系统上,设置信号处理器
+    // 这个信号处理函数的作用是啥？
     setup_reload_pipe(bus_context_get_loop(context));
 
     _dbus_set_signal_handler(SIGTERM, signal_handler);
