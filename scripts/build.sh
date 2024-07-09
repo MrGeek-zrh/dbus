@@ -20,7 +20,6 @@ cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
 	-DDBUS_USE_SYSTEMD=ON
 make -j$(nproc)
 sudo make install
-
 sudo cat << EOF | sudo tee /lib/systemd/system/dbus.socket
 [Unit]
 Description=D-Bus System Message Bus Socket
@@ -48,3 +47,6 @@ ExecStart=@/usr/bin/dbus-daemon @dbus-daemon --system --address=systemd: --nofor
 ExecReload=/usr/bin/dbus-send --print-reply --system --type=method_call --dest=org.freedesktop.DBus / org.freedesktop.DBus.ReloadConfig
 OOMScoreAdjust=-900
 EOF
+
+# 创建dump文件
+objdump -d -S --syms --section-headers bin/dbus-daemon > dbus-daemon.elf.txt

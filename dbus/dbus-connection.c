@@ -44,6 +44,10 @@
 #include "dbus-threads-internal.h"
 #include "dbus-bus.h"
 #include "dbus-marshal-basic.h"
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
 
 #ifdef DBUS_DISABLE_CHECKS
 #define TOOK_LOCK_CHECK(connection)
@@ -4161,11 +4165,12 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     }
 
     message = message_link->data;
+
     DBusMessage *msg = message;
     const char *path = dbus_message_get_path(msg);
     const char *interface = dbus_message_get_interface(msg);
     // 通过debug，似乎发现member不是Introspect，而是hello
-    // 似乎这个函数会被调用多次，其中有一次会是传过来的函数名😂目前还不太清楚这些调用过程的作用
+    // 似乎这个函数会被调用多次，其中有一次会是传过来的函数名,目前还不太清楚这些调用过程的作用
     const char *member = dbus_message_get_member(msg);
     const char *destination = dbus_message_get_destination(msg);
     const char *sender = dbus_message_get_sender(msg);
@@ -4179,9 +4184,53 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     printf("  Destination: %s\n", destination);
     printf("  Sender: %s\n", sender);
     printf("  Signature: %s\n", signature);
-    // printf("  Unix FDs: %d\n", unix_fds);
 
-    // 尝试解析message，解析出自己增加的客户端选项：--checkpoint
+    if (member != NULL) {
+        if (!strcmp(member, "checkpoint")) {
+            printf("===============开始检查点==============\n");
+            printf("===============开始获取pid==============\n");
+            // 尝试解析客户端进行传递来的参数
+            DBusMessageIter args;
+            if (!dbus_message_iter_init(msg, &args)) {
+                printf("Message has no arguments.\n");
+            } else {
+                do {
+                    int arg_type = dbus_message_iter_get_arg_type(&args);
+                    switch (arg_type) {
+                        case DBUS_TYPE_STRING: {
+                            const char *str;
+                            dbus_message_iter_get_basic(&args, &str);
+                            printf("service name is : %s\n", str);
+                            break;
+                        }
+                        case DBUS_TYPE_INT32: {
+                            int32_t int_val;
+                            dbus_message_iter_get_basic(&args, &int_val);
+                            printf("Int32: %d\n", int_val);
+                            break;
+                        }
+                        case DBUS_TYPE_BOOLEAN: {
+                            dbus_bool_t bool_val;
+                            dbus_message_iter_get_basic(&args, &bool_val);
+                            printf("Boolean: %s\n", bool_val ? "true" : "false");
+                            break;
+                        }
+                        // 添加其他需要处理的数据类型
+                        default:
+                            printf("Argument of type %c\n", arg_type);
+                            break;
+                    }
+                } while (dbus_message_iter_next(&args));
+            }
+            unsigned long pid;
+            dbus_connection_get_unix_process_id(connection, &pid);
+            printf("===============尝试获取pid:%lu==============\n", pid);
+        }
+    }
+
+#if 0
+
+#endif
 
     _dbus_verbose(" dispatching message %p (%s %s %s '%s')\n", message,
                   dbus_message_type_to_string(dbus_message_get_type(message)),
