@@ -372,6 +372,7 @@ int main(int argc, char **argv)
     const char *error_str;
 
     // TODO
+    // 这里把标准输出重定向到了系统的journal文件系统中，通过journalctl -u dbus 命令可以查看日志，不知道是怎么实现的。
     if (!_dbus_ensure_standard_fds(DBUS_FORCE_STDIN_NULL, &error_str)) {
         fprintf(stderr, "dbus-daemon: fatal error setting up standard fds: %s: %s\n", error_str, _dbus_strerror(errno));
         return 1;

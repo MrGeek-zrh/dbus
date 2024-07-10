@@ -1938,6 +1938,7 @@ typedef struct {
     void *data;
 } CancelHook;
 
+// dbus-daemon的事务管理实现
 struct BusTransaction {
     DBusList *connections;
     BusContext *context;
