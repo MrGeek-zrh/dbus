@@ -4131,22 +4131,26 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     // 获取当前的调度状态
     status = _dbus_connection_get_dispatch_status_unlocked(connection);
     if (status != DBUS_DISPATCH_DATA_REMAINS) {
-        // 如果没有需要处理的数据，解锁并更新调度状态
+        // 没有更多的数据需要处理，或者遇到了内存不足的情况
         _dbus_connection_update_dispatch_status_and_unlock(connection, status);
         return status;
     }
 
+    // 有数据需要处理，进行处理：
+    // 一般都是将收到的数据转换成message，然后进行处理
+    // 问题来了，怎么处理呢？
     // 引用连接对象以防止在回调中被释放
     _dbus_connection_ref_unlocked(connection);
 
     // 获取调度权限
+    // 也就是获取处理消息的权限
     _dbus_connection_acquire_dispatch(connection);
     HAVE_LOCK_CHECK(connection);
 
     // 从连接的消息队列中弹出下一条消息
     message_link = _dbus_connection_pop_message_link_unlocked(connection);
     if (message_link == NULL) {
-        // 其他线程已调度了消息
+        // 其他线程已处理了消息
         _dbus_verbose("another thread dispatched message (during acquire_dispatch above)\n");
 
         // 释放调度权限
@@ -4244,7 +4248,10 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     reply_serial = dbus_message_get_reply_serial(message);
     // pendingcall 可以用来追踪等待回复的消息
     // 这里其实还是不太明白具体是用来做什么
+    // 这个难道就是通过reply_serial来追踪客户端等待被回复的消息的？
     pending = _dbus_hash_table_lookup_int(connection->pending_replies, reply_serial);
+    // 如果设置了pending，调用pending中设置的处理函数？
+    // 感觉就是
     if (pending) {
         _dbus_verbose("Dispatching a pending reply\n");
         complete_pending_call_and_unlock(connection, pending, message);

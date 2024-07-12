@@ -84,6 +84,7 @@ typedef enum {
     DBUS_DISPATCH_COMPLETE, /**< All currently available data has been processed. */
     // 当前可用的所有数据都已处理完毕。这表示连接中的所有消息都已处理完，
     // 连接处于空闲状态，直到新的数据到达。
+    // dbus-dameon的初始状态就是DBUS_DISPATCH_COMPLETE。
 
     DBUS_DISPATCH_NEED_MEMORY /**< More memory is needed to continue. */
     // 需要更多的内存才能继续。这表示在处理消息时遇到了内存不足的问题，

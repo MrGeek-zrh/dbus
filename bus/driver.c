@@ -2251,6 +2251,7 @@ typedef struct {
 
 /* These should ideally be sorted by frequency of use, although it
  * probably doesn't matter with this few items */
+// TODO：这些函数是怎么起到作用的？
 static InterfaceHandler interface_handlers[] = {
     { DBUS_INTERFACE_DBUS, dbus_message_handlers,
       "    <signal name=\"NameOwnerChanged\">\n"
