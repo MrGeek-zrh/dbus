@@ -38,14 +38,14 @@
 struct DBusLoop {
     int refcount; // 引用计数
     /** DBusPollable => dbus_malloc'd DBusList ** of references to DBusWatch */
-    DBusHashTable *watches; // 哈希表,用于存储文件描述符及其关联的 DBusWatch 对象列表
+    DBusHashTable *watches; // 哈希表,用于存储文件描述符及其关联的 DBusWatch 对象列表 TODO: key是什么
     DBusPollableSet *pollable_set; // linux环境下，就可以理解成epoll_create1创建的epoll实例集合
     DBusList *timeouts; // 超时事件列表
     int callback_list_serial; // 回调列表的序列号,用于检测回调列表是否被修改
     int watch_count; // 监视器 (DBusWatch) 的数量
     int timeout_count; // 超时事件的数量
     int depth; /**< number of recursive runs */ // 递归运行的深度
-    DBusList *need_dispatch; // 需要分发的消息列表。TODO: 为什么需要这个列表？
+    DBusList *need_dispatch; // 需要分发的连接列表。TODO: 为什么需要这个列表？
     /** TRUE if we will skip a watch next time because it was OOM; becomes
      * FALSE between polling, and dealing with the results of the poll */
     unsigned oom_watch_pending : 1; // 标记是否有由于内存不足而被跳过的监视器
@@ -461,7 +461,7 @@ static dbus_bool_t check_timeout(long tv_sec, long tv_usec, TimeoutCallback *tcb
     return *timeout == 0;
 }
 
-// 分发 D-Bus 连接上的消息
+// 处理 D-Bus 连接上的消息
 dbus_bool_t _dbus_loop_dispatch(DBusLoop *loop)
 {
 #if MAINLOOP_SPEW
@@ -473,8 +473,10 @@ dbus_bool_t _dbus_loop_dispatch(DBusLoop *loop)
         return FALSE;
 
 next:
-    // 遍历需要分发的连接列表
+    // 遍历需要处理的连接列表
     while (loop->need_dispatch != NULL) {
+        // 取出第一个连接进行处理
+        // 注意，不是消息，是连接（connection），因为一个connection会接受很多的消息
         DBusConnection *connection = _dbus_list_pop_first(&loop->need_dispatch);
 
         while (TRUE) {
@@ -537,16 +539,18 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
     if (_dbus_hash_table_get_n_entries(loop->watches) == 0 && loop->timeouts == NULL)
         goto next_iteration;
 
+    // 下面是开始处理超时事件
+    // 感觉暂时是不需要这些，先不看
     timeout = -1;
-    // TODO: 这里的timeout是什么意思？
-    // 这个timeoout_count的作用是啥？
+    // 存在超时的事件
     if (loop->timeout_count > 0) {
         long tv_sec;
         long tv_usec;
 
         _dbus_get_monotonic_time(&tv_sec, &tv_usec);
 
-        // 计算最近的超时事件的剩余时间
+        // 获取到排在最前面的第一个超时的事件
+        // 看起来是遍历链表
         link = _dbus_list_get_first_link(&loop->timeouts);
         while (link != NULL) {
             DBusList *next = _dbus_list_get_next_link(&loop->timeouts, link);
@@ -773,7 +777,7 @@ next_iteration:
     _dbus_verbose("  moving to next iteration\n");
 #endif
 
-    // 分发任何挂起的消息
+    // 开始处理收到的消息
     if (_dbus_loop_dispatch(loop))
         retval = TRUE;
 

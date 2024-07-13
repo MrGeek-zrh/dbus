@@ -107,7 +107,7 @@
  * The other application may be a message bus; for convenience, the
  * function dbus_bus_get() is provided to automatically open a
  * connection to the well-known message buses.
- * 
+ *
  * In brief a DBusConnection is a message queue associated with some
  * message transport mechanism such as a socket.  The connection
  * maintains a queue of incoming messages and a queue of outgoing
@@ -129,17 +129,17 @@
  * The connection provides #DBusWatch and #DBusTimeout objects to
  * the main loop. These are used to know when reading, writing, or
  * dispatching should be performed.
- * 
+ *
  * Incoming messages are processed
  * by calling dbus_connection_dispatch(). dbus_connection_dispatch()
  * runs any handlers registered for the topmost message in the message
  * queue, then discards the message, then returns.
- * 
+ *
  * dbus_connection_get_dispatch_status() indicates whether
  * messages are currently in the queue that need dispatching.
  * dbus_connection_set_dispatch_status_function() allows
  * you to set a function to be used to monitor the dispatch status.
- * 
+ *
  * If you're using GLib or Qt add-on libraries for D-Bus, there are
  * special convenience APIs in those libraries that hide
  * all the details of dispatch and watch/timeout monitoring.
@@ -162,7 +162,7 @@
  * avoid setting up any handler functions (see
  * dbus_connection_add_filter(),
  * dbus_connection_register_object_path() for more on handlers).
- * 
+ *
  * When you use dbus_connection_send() or one of its variants to send
  * a message, the message is added to the outgoing queue.  It's
  * actually written to the network later; either in
@@ -224,12 +224,12 @@ static void _dbus_connection_trace_ref(DBusConnection *connection, int old_refco
 }
 
 /**
- * Internal struct representing a message filter function 
+ * Internal struct representing a message filter function
  */
 typedef struct DBusMessageFilter DBusMessageFilter;
 
 /**
- * Internal struct representing a message filter function 
+ * Internal struct representing a message filter function
  */
 struct DBusMessageFilter {
     DBusAtomic refcount; /**< Reference count */
@@ -284,7 +284,7 @@ struct DBusConnection {
     DBusTransport *transport; /**< Object that sends/receives messages over network. 发送和接收网络消息的对象。 */
     DBusWatchList *watches; /**< Stores active watches. 存储活跃的监视器列表。 */
     DBusTimeoutList *timeouts; /**< Stores active timeouts. 存储活跃的超时列表。 */
-
+    // 这个过滤器列表是什么时候被初始化的呢？
     DBusList *filter_list; /**< List of filters. 过滤器列表。 */
 
     DBusRMutex *
@@ -460,9 +460,9 @@ static void _dbus_connection_wakeup_mainloop(DBusConnection *connection)
  * @param mutex_loc return for the location of the main mutex pointer
  * @param dispatch_mutex_loc return location of the dispatch mutex pointer
  * @param io_path_mutex_loc return location of the io_path mutex pointer
- * @param dispatch_cond_loc return location of the dispatch conditional 
+ * @param dispatch_cond_loc return location of the dispatch conditional
  *        variable pointer
- * @param io_path_cond_loc return location of the io_path conditional 
+ * @param io_path_cond_loc return location of the io_path conditional
  *        variable pointer
  */
 void _dbus_connection_test_get_locks(DBusConnection *connection, DBusMutex **mutex_loc, DBusMutex **dispatch_mutex_loc,
@@ -565,7 +565,7 @@ dbus_bool_t _dbus_connection_has_messages_to_send_unlocked(DBusConnection *conne
  * Use dbus_connection_flush() to block until all outgoing
  * messages have been written to the underlying transport
  * (such as a socket).
- * 
+ *
  * @param connection the connection.
  * @returns #TRUE if the outgoing queue is non-empty.
  */
@@ -888,9 +888,9 @@ static void free_pending_call_on_hash_removal(void *data)
         _dbus_pending_call_set_timeout_added_unlocked(pending, FALSE);
     }
 
-    /* FIXME 1.0? this is sort of dangerous and undesirable to drop the lock 
-   * here, but the pending call finalizer could in principle call out to 
-   * application code so we pretty much have to... some larger code reorg 
+    /* FIXME 1.0? this is sort of dangerous and undesirable to drop the lock
+   * here, but the pending call finalizer could in principle call out to
+   * application code so we pretty much have to... some larger code reorg
    * might be needed.
    */
     _dbus_connection_ref_unlocked(connection);
@@ -1067,7 +1067,7 @@ static void _dbus_connection_release_io_path(DBusConnection *connection)
  * lock for a while.
  *
  * Called with connection lock held.
- * 
+ *
  * @param connection the connection.
  * @param pending the pending call that should be checked or NULL
  * @param flags iteration flags.
@@ -1335,7 +1335,7 @@ dbus_uint32_t _dbus_connection_get_next_client_serial(DBusConnection *connection
 
 /**
  * A callback for use with dbus_watch_new() to create a DBusWatch.
- * 
+ *
  * @todo This is basically a hack - we could delete _dbus_transport_handle_watch()
  * and the virtual handle_watch in DBusTransport if we got rid of it.
  * The reason this is some work is threading, see the _dbus_connection_handle_watch()
@@ -1744,7 +1744,7 @@ static DBusConnection *_dbus_connection_open_internal(const char *address, dbus_
  * only be used on private connections. Should only be called by the
  * dbus code that owns the connection - an owner must be known,
  * the open/close state is like malloc/free, not like ref/unref.
- * 
+ *
  * @param connection the connection
  */
 void _dbus_connection_close_possibly_shared(DBusConnection *connection)
@@ -1909,7 +1909,7 @@ dbus_bool_t _dbus_connection_send_and_unlock(DBusConnection *connection, DBusMes
  *
  * If we didn't atomically check the refcount and close with the lock held
  * though, we could screw this up.
- * 
+ *
  * @param connection the connection
  */
 void _dbus_connection_close_if_only_one_ref(DBusConnection *connection)
@@ -2077,18 +2077,21 @@ static void connection_timeout_and_complete_all_pending_calls_unlocked(DBusConne
 static void complete_pending_call_and_unlock(DBusConnection *connection, DBusPendingCall *pending, DBusMessage *message)
 {
     // 将收到的回复消息设置到 pending 对象中
+    // TODO: 具体是做了什么呢？
+    // 将收到的回复消息与一个DBusPendingCall相关联
+    // 奇怪，按理说进行绑定不应该是客户端做的吗？
     _dbus_pending_call_set_reply_unlocked(pending, message);
 
     // 增加 pending 对象的引用计数，以防应用程序没有持有引用
     _dbus_pending_call_ref_unlocked(pending);
 
-    // 开始处理 pending 调用的完成过程
     _dbus_pending_call_start_completion_unlocked(pending);
 
     // 从连接中分离 pending 调用，并解锁连接
     _dbus_connection_detach_pending_call_and_unlock(connection, pending);
 
     // 必须在未加锁的情况下调用此函数，因为它会调用应用程序的回调函数
+    // TODO
     _dbus_pending_call_finish_completion(pending);
 
     // 释放 pending 对象的引用
@@ -2128,7 +2131,7 @@ static dbus_bool_t check_for_reply_and_update_dispatch_unlocked(DBusConnection *
  * filter callbacks.
  *
  * Returns immediately if pending call already got a reply.
- * 
+ *
  * @todo could use performance improvements (it keeps scanning
  * the whole message queue for example)
  *
@@ -2338,7 +2341,7 @@ void _dbus_connection_set_pending_fds_function(DBusConnection *connection, DBusP
  * unless you have good reason; connections are expensive enough
  * that it's wasteful to create lots of connections to the same
  * server.
- * 
+ *
  * @param address the address.
  * @param error address where an error can be returned.
  * @returns new connection, or #NULL on failure.
@@ -2368,7 +2371,7 @@ DBusConnection *dbus_connection_open(const char *address, DBusError *error)
  * When you are done with this connection, you must
  * dbus_connection_close() to disconnect it,
  * and dbus_connection_unref() to free the connection object.
- * 
+ *
  * (The dbus_connection_close() can be skipped if the
  * connection is already known to be disconnected, for example
  * if you are inside a handler for the Disconnected signal.)
@@ -2553,7 +2556,7 @@ void dbus_connection_unref(DBusConnection *connection)
  * and in that case this function never runs. So this function must
  * not do anything more than disconnect the transport and update the
  * dispatch status.
- * 
+ *
  * If the transport self-disconnects, then we assume someone will
  * dispatch the connection to cause the dispatch status update.
  */
@@ -2598,7 +2601,7 @@ static void _dbus_connection_close_possibly_shared_and_unlock(DBusConnection *co
  *
  * Attempts to send messages after closing a connection are safe, but will result in
  * error replies generated locally in libdbus.
- * 
+ *
  * This function does not affect the connection's reference count.  It's
  * safe to close a connection more than once; all calls after the
  * first do nothing. It's impossible to "reopen" a connection, a
@@ -2608,8 +2611,8 @@ static void _dbus_connection_close_possibly_shared_and_unlock(DBusConnection *co
  * message it generates needs to be dispatched.
  *
  * If a connection is dropped by the remote application, it will
- * close itself. 
- * 
+ * close itself.
+ *
  * You must close a connection prior to releasing the last reference to
  * the connection. If you dbus_connection_unref() for the last time
  * without closing the connection, the results are undefined; it
@@ -2664,7 +2667,7 @@ static dbus_bool_t _dbus_connection_get_is_connected_unlocked(DBusConnection *co
  * become disconnected when the remote application closes its end, or
  * exits; a connection may also be disconnected with
  * dbus_connection_close().
- * 
+ *
  * There are not separate states for "closed" and "disconnected," the two
  * terms are synonymous. This function should really be called
  * get_is_open() but for historical reasons is not.
@@ -2722,9 +2725,9 @@ dbus_bool_t dbus_connection_get_is_authenticated(DBusConnection *connection)
  * dbus_server_set_auth_mechanisms() to remove the mechanisms that
  * allow proving user identity (i.e. only allow the ANONYMOUS
  * mechanism).
- * 
+ *
  * @param connection the connection
- * @returns #TRUE if not authenticated or authenticated as anonymous 
+ * @returns #TRUE if not authenticated or authenticated as anonymous
  */
 dbus_bool_t dbus_connection_get_is_anonymous(DBusConnection *connection)
 {
@@ -2744,7 +2747,7 @@ dbus_bool_t dbus_connection_get_is_anonymous(DBusConnection *connection)
  * connection is on the client side. If the connection is on the
  * server side, this will always return #NULL - use dbus_server_get_id()
  * to get the ID of your own server, if you are the server side.
- * 
+ *
  * If a client-side connection is not authenticated yet, the ID may be
  * available if it was included in the server address, but may not be
  * available. The only way to be sure the server ID is available
@@ -2763,7 +2766,7 @@ dbus_bool_t dbus_connection_get_is_anonymous(DBusConnection *connection)
  * get the machine you are on.  There isn't a convenience wrapper, but
  * you can invoke org.freedesktop.DBus.Peer.GetMachineId on any peer
  * to get the machine ID on the other end.
- * 
+ *
  * The D-Bus specification describes the server ID and other IDs in a
  * bit more detail.
  *
@@ -2848,7 +2851,7 @@ void dbus_connection_set_exit_on_disconnect(DBusConnection *connection, dbus_boo
 }
 
 /**
- * Preallocates resources needed to send a message, allowing the message 
+ * Preallocates resources needed to send a message, allowing the message
  * to be sent without the possibility of memory allocation failure.
  * Allows apps to create a future guarantee that they can send
  * a message regardless of memory shortages.
@@ -2953,15 +2956,15 @@ static dbus_bool_t _dbus_connection_send_unlocked_no_update(DBusConnection *conn
  * Adds a message to the outgoing message queue. Does not block to
  * write the message to the network; that happens asynchronously. To
  * force the message to be written, call dbus_connection_flush() however
- * it is not necessary to call dbus_connection_flush() by hand; the 
- * message will be sent the next time the main loop is run. 
+ * it is not necessary to call dbus_connection_flush() by hand; the
+ * message will be sent the next time the main loop is run.
  * dbus_connection_flush() should only be used, for example, if
  * the application was expected to exit before running the main loop.
  *
  * Because this only queues the message, the only reason it can
  * fail is lack of memory. Even if the connection is disconnected,
- * no error will be returned. If the function fails due to lack of memory, 
- * it returns #FALSE. The function will never fail for other reasons; even 
+ * no error will be returned. If the function fails due to lack of memory,
+ * it returns #FALSE. The function will never fail for other reasons; even
  * if the connection is disconnected, you can queue an outgoing message,
  * though obviously it won't be sent.
  *
@@ -2970,7 +2973,7 @@ static dbus_bool_t _dbus_connection_send_unlocked_no_update(DBusConnection *conn
  *
  * dbus_message_unref() can be called as soon as this method returns
  * as the message queue will hold its own ref until the message is sent.
- * 
+ *
  * @param connection the connection.
  * @param message the message to write.
  * @param serial return location for message serial, or #NULL if you don't care
@@ -3035,7 +3038,7 @@ static dbus_bool_t reply_handler_timeout(void *data)
  *
  * A #DBusPendingCall will always see exactly one reply message,
  * unless it's cancelled with dbus_pending_call_cancel().
- * 
+ *
  * If #NULL is passed for the pending_return, the #DBusPendingCall
  * will still be generated internally, and used to track
  * the message reply timeout. This means a timeout error will
@@ -3159,7 +3162,7 @@ error_unlocked:
  * i.e. messages other than the reply are queued up but not
  * processed. This function is used to invoke method calls on a
  * remote object.
- * 
+ *
  * If a normal reply is received, it is returned, and removed from the
  * incoming message queue. If it is not received, #NULL is returned
  * and the error is set to #DBUS_ERROR_NO_REPLY.  If an error reply is
@@ -3240,7 +3243,7 @@ DBusMessage *dbus_connection_send_with_reply_and_block(DBusConnection *connectio
  * Assumes connection lock already held.
  *
  * If you call this, you MUST call update_dispatch_status afterword...
- * 
+ *
  * @param connection the connection.
  */
 static DBusDispatchStatus _dbus_connection_flush_unlocked(DBusConnection *connection)
@@ -3300,7 +3303,7 @@ void dbus_connection_flush(DBusConnection *connection)
  * This function implements dbus_connection_read_write_dispatch() and
  * dbus_connection_read_write() (they pass a different value for the
  * dispatch parameter).
- * 
+ *
  * @param connection the connection
  * @param timeout_milliseconds max time to block or -1 for infinite
  * @param dispatch dispatch new messages or leave them on the incoming queue
@@ -3313,7 +3316,7 @@ static dbus_bool_t _dbus_connection_read_write_dispatch(DBusConnection *connecti
     dbus_bool_t progress_possible;
 
     /* Need to grab a ref here in case we're a private connection and
-   * the user drops the last ref in a handler we call; see bug 
+   * the user drops the last ref in a handler we call; see bug
    * https://bugs.freedesktop.org/show_bug.cgi?id=15635
    */
     dbus_connection_ref(connection);
@@ -3358,16 +3361,16 @@ static dbus_bool_t _dbus_connection_read_write_dispatch(DBusConnection *connecti
  * This function is intended for use with applications that don't want
  * to write a main loop and deal with #DBusWatch and #DBusTimeout. An
  * example usage would be:
- * 
+ *
  * @code
  *   while (dbus_connection_read_write_dispatch (connection, -1))
  *     ; // empty loop body
  * @endcode
- * 
+ *
  * In this usage you would normally have set up a filter function to look
  * at each message as it is dispatched. The loop terminates when the last
  * message from the connection (the disconnected signal) is processed.
- * 
+ *
  * If there are messages to dispatch, this function will
  * dbus_connection_dispatch() once, and return. If there are no
  * messages to dispatch, this function will block until it can read or
@@ -3395,11 +3398,11 @@ dbus_bool_t dbus_connection_read_write_dispatch(DBusConnection *connection, int 
     return _dbus_connection_read_write_dispatch(connection, timeout_milliseconds, TRUE);
 }
 
-/** 
+/**
  * This function is intended for use with applications that don't want to
  * write a main loop and deal with #DBusWatch and #DBusTimeout. See also
  * dbus_connection_read_write_dispatch().
- * 
+ *
  * As long as the connection is open, this function will block until it can
  * read or write, then read or write, then return #TRUE.
  *
@@ -3413,9 +3416,9 @@ dbus_bool_t dbus_connection_read_write_dispatch(DBusConnection *connection, int 
  * processed. dbus_connection_read_write_dispatch() dispatches
  * incoming messages for you; with dbus_connection_read_write() you
  * have to arrange to drain the incoming queue yourself.
- * 
- * @param connection the connection 
- * @param timeout_milliseconds max time to block or -1 for infinite 
+ *
+ * @param connection the connection
+ * @param timeout_milliseconds max time to block or -1 for infinite
  * @returns #TRUE if still connected
  */
 dbus_bool_t dbus_connection_read_write(DBusConnection *connection, int timeout_milliseconds)
@@ -3444,7 +3447,7 @@ static void check_disconnected_message_arrived_unlocked(DBusConnection *connecti
 /**
  * Returns the first-received message from the incoming message queue,
  * leaving it in the queue. If the queue is empty, returns #NULL.
- * 
+ *
  * The caller does not own a reference to the returned message, and
  * must either return it using dbus_connection_return_message() or
  * keep it after calling dbus_connection_steal_borrowed_message(). No
@@ -3667,7 +3670,7 @@ static void _dbus_connection_putback_message_link_unlocked(DBusConnection *conne
  * queue, so dbus_connection_dispatch(), dbus_connection_pop_message(),
  * dbus_connection_borrow_message(), etc. will all block while one of the others
  * in the group is running.
- * 
+ *
  * @param connection the connection.
  * @returns next message in the incoming queue.
  */
@@ -3929,7 +3932,7 @@ static void _dbus_connection_update_dispatch_status_and_unlock(DBusConnection *c
  * In particular this happens on initial connection, because all sorts
  * of authentication protocol stuff has to be parsed before the
  * first message arrives.
- * 
+ *
  * @param connection the connection.
  * @returns current dispatch status
  */
@@ -3956,89 +3959,117 @@ DBusDispatchStatus dbus_connection_get_dispatch_status(DBusConnection *connectio
 static DBusHandlerResult _dbus_connection_peer_filter_unlocked_no_update(DBusConnection *connection,
                                                                          DBusMessage *message)
 {
-    dbus_bool_t sent = FALSE;
-    DBusMessage *ret = NULL;
-    DBusList *expire_link;
+    dbus_bool_t sent = FALSE; // 标记消息是否成功发送
+    DBusMessage *ret = NULL; // 用于存储回复消息
+    DBusList *expire_link; // 链表节点，用于处理过期消息
 
+    // 如果需要让总线路由此消息，并且消息有目标地址，则不处理此消息
     if (connection->route_peer_messages && dbus_message_get_destination(message) != NULL) {
         /* This means we're letting the bus route this message */
         return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
     }
 
+    // 如果消息不包含 org.freedesktop.DBus.Peer 接口，则不处理此消息
     if (!dbus_message_has_interface(message, DBUS_INTERFACE_PEER)) {
         return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
     }
 
-    /* Preallocate a linked-list link, so that if we need to dispose of a
-   * message, we can attach it to the expired list */
+    // 预分配链表节点，以便在需要处理消息时将其附加到过期消息列表
+    // 啥意思？
     expire_link = _dbus_list_alloc_link(NULL);
 
+    // 如果分配链表节点失败，返回内存不足错误
     if (!expire_link)
         return DBUS_HANDLER_RESULT_NEED_MEMORY;
 
+    // 处理 Ping 方法调用
     if (dbus_message_is_method_call(message, DBUS_INTERFACE_PEER, "Ping")) {
+        // 创建方法返回消息
         ret = dbus_message_new_method_return(message);
         if (ret == NULL)
             goto out;
 
+        // 发送回复消息
         sent = _dbus_connection_send_unlocked_no_update(connection, ret, NULL);
-    } else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PEER, "GetMachineId")) {
-        DBusString uuid;
-        DBusError error = DBUS_ERROR_INIT;
+    }
+    // 处理 GetMachineId 方法调用
+    else if (dbus_message_is_method_call(message, DBUS_INTERFACE_PEER, "GetMachineId")) {
+        DBusString uuid; // 用于存储机器 UUID
+        DBusError error = DBUS_ERROR_INIT; // 初始化错误结构
 
+        // 初始化字符串
         if (!_dbus_string_init(&uuid))
             goto out;
 
+        // 获取本地机器 UUID
         if (_dbus_get_local_machine_uuid_encoded(&uuid, &error)) {
             const char *v_STRING;
 
+            // 创建方法返回消息
             ret = dbus_message_new_method_return(message);
-
             if (ret == NULL) {
                 _dbus_string_free(&uuid);
                 goto out;
             }
 
+            // 获取 UUID 字符串数据
             v_STRING = _dbus_string_get_const_data(&uuid);
+            // 将 UUID 作为字符串参数附加到回复消息
             if (dbus_message_append_args(ret, DBUS_TYPE_STRING, &v_STRING, DBUS_TYPE_INVALID)) {
+                // 发送回复消息
                 sent = _dbus_connection_send_unlocked_no_update(connection, ret, NULL);
             }
-        } else if (dbus_error_has_name(&error, DBUS_ERROR_NO_MEMORY)) {
+        }
+        // 处理内存不足错误
+        else if (dbus_error_has_name(&error, DBUS_ERROR_NO_MEMORY)) {
             dbus_error_free(&error);
             goto out;
-        } else {
+        }
+        // 处理其他错误
+        else {
+            // 创建错误消息
             ret = dbus_message_new_error(message, error.name, error.message);
             dbus_error_free(&error);
 
             if (ret == NULL)
                 goto out;
 
+            // 发送错误消息
             sent = _dbus_connection_send_unlocked_no_update(connection, ret, NULL);
         }
 
+        // 释放 UUID 字符串
         _dbus_string_free(&uuid);
-    } else {
-        /* We need to bounce anything else with this interface, otherwise apps
-       * could start extending the interface and when we added extensions
-       * here to DBusConnection we'd break those apps.
+    }
+    // 处理未知方法调用
+    else {
+        /* 我们需要反弹任何其他使用此接口的方法，否则应用程序
+       * 可能会开始扩展接口，当我们在 DBusConnection 中添加扩展时，
+       * 会破坏这些应用程序。
        */
+        // 创建未知方法错误消息
         ret = dbus_message_new_error(message, DBUS_ERROR_UNKNOWN_METHOD,
                                      "Unknown method invoked on org.freedesktop.DBus.Peer interface");
         if (ret == NULL)
             goto out;
 
+        // 发送错误消息
         sent = _dbus_connection_send_unlocked_no_update(connection, ret, NULL);
     }
 
 out:
+    // 如果 ret 为空，释放链表节点
     if (ret == NULL) {
         _dbus_list_free_link(expire_link);
-    } else {
-        /* It'll be safe to unref the reply when we unlock */
+    }
+    // 否则，将回复消息添加到过期消息列表
+    else {
+        /* 解锁时取消引用回复消息是安全的 */
         expire_link->data = ret;
         _dbus_list_prepend_link(&connection->expired_messages, expire_link);
     }
 
+    // 如果消息未成功发送，返回内存不足错误
     if (!sent)
         return DBUS_HANDLER_RESULT_NEED_MEMORY;
 
@@ -4070,7 +4101,7 @@ static DBusHandlerResult _dbus_connection_run_builtin_filters_unlocked_no_update
  * The incoming data buffer is filled when the connection reads from
  * its underlying transport (such as a socket).  Reading usually
  * happens in dbus_watch_handle() or dbus_connection_read_write().
- * 
+ *
  * If there are complete messages in the incoming queue,
  * dbus_connection_dispatch() removes one message from the queue and
  * processes it. Processing has three steps.
@@ -4078,7 +4109,7 @@ static DBusHandlerResult _dbus_connection_run_builtin_filters_unlocked_no_update
  * First, any method replies are passed to #DBusPendingCall or
  * dbus_connection_send_with_reply_and_block() in order to
  * complete the pending method call.
- * 
+ *
  * Second, any filters registered with dbus_connection_add_filter()
  * are run. If any filter returns #DBUS_HANDLER_RESULT_HANDLED
  * then processing stops after that filter.
@@ -4096,14 +4127,14 @@ static DBusHandlerResult _dbus_connection_run_builtin_filters_unlocked_no_update
  * recursively.  If threads have been initialized with a recursive
  * mutex function, then this will not deadlock; however, it can
  * certainly confuse your application.
- * 
+ *
  * @todo some FIXME in here about handling DBUS_HANDLER_RESULT_NEED_MEMORY
- * 
+ *
  * @param connection the connection
  * @returns dispatch status, see dbus_connection_get_dispatch_status()
  */
 /**
- * @brief 分发消息并处理 DBus 连接的调度
+ * @brief 处理connection上连接的消息
  *
  * 这个函数从连接的消息队列中获取下一条消息，并依次通过挂起调用、内建过滤器、自定义过滤器、
  * 对象路径处理函数等处理它。根据消息处理的结果更新连接的调度状态。
@@ -4168,6 +4199,7 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
         return status;
     }
 
+    // 取消息出来
     message = message_link->data;
 
     DBusMessage *msg = message;
@@ -4232,16 +4264,14 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
         }
     }
 
-#if 0
-
-#endif
-
+    // 消息解析完毕了，开始进一步处理
     _dbus_verbose(" dispatching message %p (%s %s %s '%s')\n", message,
                   dbus_message_type_to_string(dbus_message_get_type(message)),
                   dbus_message_get_interface(message) ? dbus_message_get_interface(message) : "no interface",
                   dbus_message_get_member(message) ? dbus_message_get_member(message) : "no member",
                   dbus_message_get_signature(message));
 
+    // 最开始设置处理结果为未处理
     result = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
     // 获取消息的序列号
@@ -4249,9 +4279,10 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     // pendingcall 可以用来追踪等待回复的消息
     // 这里其实还是不太明白具体是用来做什么
     // 这个难道就是通过reply_serial来追踪客户端等待被回复的消息的？
+    // 感觉是的，不过还是不太清楚这个pending call对象是怎么被管理的，除了用一个hashmap，具体怎么处理？
     pending = _dbus_hash_table_lookup_int(connection->pending_replies, reply_serial);
     // 如果设置了pending，调用pending中设置的处理函数？
-    // 感觉就是
+    // 感觉就是这样
     if (pending) {
         _dbus_verbose("Dispatching a pending reply\n");
         complete_pending_call_and_unlock(connection, pending, message);
@@ -4264,6 +4295,7 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     }
 
     // 如果内建过滤器已启用，则运行内建过滤器
+    // 目前其实就是处理peer接口
     if (connection->builtin_filters_enabled) {
         result = _dbus_connection_run_builtin_filters_unlocked_no_update(connection, message);
         if (result != DBUS_HANDLER_RESULT_NOT_YET_HANDLED)
@@ -4478,7 +4510,7 @@ out:
  * enabling/disabling can be done without memory allocation.  The
  * toggled function may be NULL if a main loop re-queries
  * dbus_watch_get_enabled() every time anyway.
- * 
+ *
  * The DBusWatch can be queried for the file descriptor to watch using
  * dbus_watch_get_unix_fd() or dbus_watch_get_socket(), and for the
  * events to watch for using dbus_watch_get_flags(). The flags
@@ -4495,7 +4527,7 @@ out:
  * dbus_watch_handle() cannot be called during the
  * DBusAddWatchFunction, as the connection will not be ready to handle
  * that watch yet.
- * 
+ *
  * It is not allowed to reference a DBusWatch after it has been passed
  * to remove_function.
  *
@@ -4512,7 +4544,7 @@ out:
  * may not invoke any methods on DBusConnection or it will deadlock.
  * See the comments in the code or http://lists.freedesktop.org/archives/dbus/2007-July/tread.html#8144
  * if you encounter this issue and want to attempt writing a patch.
- * 
+ *
  * @param connection the connection.
  * @param add_function function to begin monitoring a new descriptor.
  * @param remove_function function to stop monitoring a descriptor.
@@ -4564,7 +4596,7 @@ dbus_bool_t dbus_connection_set_watch_functions(DBusConnection *connection, DBus
  * When using Qt, typically the DBusAddTimeoutFunction would create a
  * QTimer. When using GLib, the DBusAddTimeoutFunction would call
  * g_timeout_add.
- * 
+ *
  * The DBusTimeoutToggledFunction notifies the application that the
  * timeout has been enabled or disabled. Call
  * dbus_timeout_get_enabled() to check this. A disabled timeout should
@@ -4710,7 +4742,7 @@ void dbus_connection_set_dispatch_status_function(DBusConnection *connection, DB
  *
  * Right now the returned descriptor is always a socket, but
  * that is not guaranteed.
- * 
+ *
  * @param connection the connection
  * @param fd return location for the file descriptor.
  * @returns #TRUE if fd is successfully obtained.
@@ -4738,7 +4770,7 @@ dbus_bool_t dbus_connection_get_unix_fd(DBusConnection *connection, int *fd)
  * If the connection is not socket-based, this function will return FALSE,
  * even if the connection does have a file descriptor of some kind.
  * i.e. this function always returns specifically a socket file descriptor.
- * 
+ *
  * @param connection the connection
  * @param fd return location for the file descriptor.
  * @returns #TRUE if fd is successfully obtained.
@@ -4884,7 +4916,7 @@ dbus_bool_t dbus_connection_get_adt_audit_session_data(DBusConnection *connectio
  * However, the function will never be called, because there are
  * no UNIX user ids to pass to it, or at least none of the existing
  * auth protocols would allow authenticating as a UNIX user on Windows.
- * 
+ *
  * @param connection the connection
  * @param function the predicate
  * @param data data to pass to the predicate
@@ -4968,7 +5000,7 @@ DBusCredentials *_dbus_connection_get_credentials(DBusConnection *connection)
  * The return value indicates whether the user SID is available;
  * if it's available but we don't have the memory to copy it,
  * then the return value is #TRUE and #NULL is given as the SID.
- * 
+ *
  * @todo We would like to be able to say "You can ask the bus to tell
  * you the user of another connection though if you like; this is done
  * with dbus_bus_get_windows_user()." But this has to be implemented
@@ -5017,7 +5049,7 @@ dbus_bool_t dbus_connection_get_windows_user(DBusConnection *connection, char **
  * be invoked when the connection is freed or a new function is set.
  * However, the function will never be called, because there is no
  * way right now to authenticate as a Windows user on UNIX.
- * 
+ *
  * @param connection the connection
  * @param function the predicate
  * @param data data to pass to the predicate
@@ -5046,7 +5078,7 @@ void dbus_connection_set_windows_user_function(DBusConnection *connection, DBusA
  * #TRUE (the default is #FALSE), then the connection can proceed even if
  * the client does not authenticate as some user identity, i.e. clients
  * can connect anonymously.
- * 
+ *
  * This setting interacts with the available authorization mechanisms
  * (see dbus_server_set_auth_mechanisms()). Namely, an auth mechanism
  * such as ANONYMOUS that supports anonymous auth must be included in
@@ -5062,7 +5094,7 @@ void dbus_connection_set_windows_user_function(DBusConnection *connection, DBusA
  * You can override the rules for connections authorized as a
  * user identity with dbus_connection_set_unix_user_function()
  * and dbus_connection_set_windows_user_function().
- * 
+ *
  * @param connection the connection
  * @param value whether to allow authentication as an anonymous user
  */
@@ -5511,7 +5543,7 @@ static DBusDataSlotAllocator slot_allocator = _DBUS_DATA_SLOT_ALLOCATOR_INIT(_DB
  * The passed-in slot must be initialized to -1, and is filled in
  * with the slot ID. If the passed-in slot is not -1, it's assumed
  * to be already allocated, and its refcount is incremented.
- * 
+ *
  * The allocated slot is global, i.e. all DBusConnection objects will
  * have a slot with the given integer ID reserved.
  *
@@ -5641,7 +5673,7 @@ void dbus_connection_set_change_sigpipe(dbus_bool_t will_modify_sigpipe)
  * Specifies the maximum size message this connection is allowed to
  * receive. Larger messages will result in disconnecting the
  * connection.
- * 
+ *
  * @param connection a #DBusConnection
  * @param size maximum message size the connection can receive, in bytes
  */
@@ -5721,7 +5753,7 @@ long dbus_connection_get_max_message_unix_fds(DBusConnection *connection)
  *
  * Thus, the max live messages size can actually be exceeded
  * by up to the maximum size of a single message.
- * 
+ *
  * Also, if we read say 1024 bytes off the wire in a single read(),
  * and that contains a half-dozen small messages, we may exceed the
  * size max by that amount. But this should be inconsequential.
