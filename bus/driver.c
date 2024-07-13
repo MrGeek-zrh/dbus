@@ -22,6 +22,7 @@
  *
  */
 
+#include "dbus/dbus-protocol.h"
 #include <config.h>
 #include "activation.h"
 #include "apparmor.h"
@@ -42,6 +43,7 @@
 #include <dbus/dbus-message.h>
 #include <dbus/dbus-marshal-recursive.h>
 #include <dbus/dbus-marshal-validate.h>
+#include <stdio.h>
 #include <string.h>
 
 static inline const char *nonnull(const char *maybe_null, const char *if_null)
@@ -1428,6 +1430,38 @@ failed:
     return FALSE;
 }
 
+// 对checkpoint/restore功能的实现
+static dbus_bool_t bus_driver_handle_checkpoint(DBusConnection *connection, BusTransaction *transaction,
+                                                DBusMessage *message, DBusError *error)
+{
+    DBusConnection *conn;
+    DBusMessage *reply;
+    dbus_pid_t pid;
+    dbus_uint32_t pid32;
+    const char *service;
+    BusDriverFound found;
+
+    printf("=============checkpoint func is called==============!!!");
+    printf("=============checkpoint func is called==============!!!");
+    printf("=============checkpoint func is called==============!!!");
+    printf("=============checkpoint func is called==============!!!");
+    printf("=============checkpoint func is called==============!!!");
+    printf("=============checkpoint func is called==============!!!");
+    printf("=============checkpoint func is called==============!!!");
+    printf("=============checkpoint func is called==============!!!");
+
+    return TRUE;
+
+oom:
+    BUS_SET_OOM(error);
+
+failed:
+    _DBUS_ASSERT_ERROR_IS_SET(error);
+    if (reply)
+        dbus_message_unref(reply);
+    return FALSE;
+}
+
 static dbus_bool_t bus_driver_handle_get_connection_unix_process_id(DBusConnection *connection,
                                                                     BusTransaction *transaction, DBusMessage *message,
                                                                     DBusError *error)
@@ -2163,6 +2197,11 @@ static const MessageHandler dbus_message_handlers[] = {
     { "ReloadConfig", "", "", bus_driver_handle_reload_config, METHOD_FLAG_ANY_PATH },
     { "GetId", "", DBUS_TYPE_STRING_AS_STRING, bus_driver_handle_get_id, METHOD_FLAG_ANY_PATH },
     { "GetConnectionCredentials", "s", "a{sv}", bus_driver_handle_get_connection_credentials, METHOD_FLAG_ANY_PATH },
+
+    // 增加checkpoint函数
+    { "Checkpoint", DBUS_TYPE_STRING_AS_STRING, DBUS_TYPE_BOOLEAN_AS_STRING, bus_driver_handle_checkpoint,
+      METHOD_FLAG_ANY_PATH },
+
     { NULL, NULL, NULL, NULL }
 };
 
@@ -2839,31 +2878,38 @@ static dbus_bool_t bus_driver_handle_set(DBusConnection *connection, BusTransact
     const PropertyHandler *handler;
     DBusMessageIter iter;
 
-    /* We already checked this in bus_driver_handle_message() */
+    // 我们已经在 bus_driver_handle_message() 中检查了这一点
     _dbus_assert(dbus_message_has_signature(message, "ssv"));
 
+    // 初始化消息迭代器，如果初始化失败，触发断言失败
     if (!dbus_message_iter_init(message, &iter))
         _dbus_assert_not_reached("Message type was already checked to be 'ssv'");
 
+    // 获取消息中的第一个基本类型参数（接口名）
     dbus_message_iter_get_basic(&iter, &iface);
 
+    // 迭代到下一个参数，如果失败，触发断言失败
     if (!dbus_message_iter_next(&iter))
         _dbus_assert_not_reached("Message type was already checked to be 'ssv'");
 
+    // 获取消息中的第二个基本类型参数（属性名）
     dbus_message_iter_get_basic(&iter, &prop);
 
-    /* We only implement Properties on /org/freedesktop/DBus so far. */
+    // 我们目前只实现了 /org/freedesktop/DBus 上的属性
     ih = bus_driver_find_interface(iface, TRUE, error);
 
+    // 如果找不到接口处理程序，返回 FALSE，并设置错误
     if (ih == NULL)
         return FALSE;
 
+    // 在接口处理程序中查找属性处理程序
     handler = interface_handler_find_property(ih, prop, error);
 
+    // 如果找不到属性处理程序，返回 FALSE，并设置错误
     if (handler == NULL)
         return FALSE;
 
-    /* We don't implement any properties that can be set yet. */
+    // 我们目前不实现任何可以设置的属性
     dbus_set_error(error, DBUS_ERROR_PROPERTY_READ_ONLY, "Property '%s.%s' cannot be set", iface, prop);
     return FALSE;
 }
