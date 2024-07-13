@@ -28,9 +28,9 @@
 #include "connection.h"
 
 typedef enum {
-    BUS_DRIVER_FOUND_SELF,
-    BUS_DRIVER_FOUND_PEER,
-    BUS_DRIVER_FOUND_ERROR,
+    BUS_DRIVER_FOUND_SELF,  // 表示请求的服务是 D-Bus 自身
+    BUS_DRIVER_FOUND_PEER,  // 表示找到了请求的服务，是一个对等连接
+    BUS_DRIVER_FOUND_ERROR  // 表示在查找服务时发生了错误，未能找到服务
 } BusDriverFound;
 
 void bus_driver_remove_connection(DBusConnection *connection);

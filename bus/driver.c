@@ -67,35 +67,49 @@ static DBusConnection *bus_driver_get_owner_of_name(DBusConnection *observer, co
     return bus_service_get_primary_owners_connection(serv);
 }
 
+// 根据给定的 DBus 消息获取目标连接的详细信息。
+// 这些信息包括连接的名称和对应的连接对象。
+// 如果找不到连接，或者连接名称无效，则设置相应的错误。
+// found = bus_driver_get_conn_helper(connection, message, "UID", &service, &conn, error);
+/**
+    name_p:message 传递来的service name参数
+    */
 BusDriverFound bus_driver_get_conn_helper(DBusConnection *connection, DBusMessage *message, const char *what_we_want,
                                           const char **name_p, DBusConnection **peer_conn_p, DBusError *error)
 {
     DBusConnection *conn;
     const char *name;
 
+    // 获取message传递来的参数:service name
     if (!dbus_message_get_args(message, error, DBUS_TYPE_STRING, &name, DBUS_TYPE_INVALID))
-        return BUS_DRIVER_FOUND_ERROR;
+        return BUS_DRIVER_FOUND_ERROR; // 如果获取参数失败，返回错误状态
 
-    _dbus_assert(name != NULL);
-    _dbus_verbose("asked for %s of connection %s\n", what_we_want, name);
+    _dbus_assert(name != NULL); // 断言 name 不为空
+    _dbus_verbose("asked for %s of connection %s\n", what_we_want, name); // 打印调试信息
 
+    // 如果提供了 name_p 指针，将获取到的名字存储在其中
     if (name_p != NULL)
         *name_p = name;
 
+    // 如果请求的是 DBus 自身的服务名，返回 BUS_DRIVER_FOUND_SELF 状态
     if (strcmp(name, DBUS_SERVICE_DBUS) == 0)
         return BUS_DRIVER_FOUND_SELF;
 
+    // 获取给定名字的拥有者连接
     conn = bus_driver_get_owner_of_name(connection, name);
 
+    // 如果找不到拥有者连接，设置错误并返回错误状态
     if (conn == NULL) {
         dbus_set_error(error, DBUS_ERROR_NAME_HAS_NO_OWNER, "Could not get %s of name '%s': no such name", what_we_want,
                        name);
         return BUS_DRIVER_FOUND_ERROR;
     }
 
+    // 如果提供了 peer_conn_p 指针，将找到的连接存储在其中
     if (peer_conn_p != NULL)
         *peer_conn_p = conn;
 
+    // 返回 BUS_DRIVER_FOUND_PEER 状态，表示成功找到了对应的连接
     return BUS_DRIVER_FOUND_PEER;
 }
 
@@ -1437,18 +1451,75 @@ static dbus_bool_t bus_driver_handle_checkpoint(DBusConnection *connection, BusT
     DBusConnection *conn;
     DBusMessage *reply;
     dbus_pid_t pid;
-    dbus_uint32_t pid32;
     const char *service;
     BusDriverFound found;
 
-    printf("=============checkpoint func is called==============!!!");
-    printf("=============checkpoint func is called==============!!!");
-    printf("=============checkpoint func is called==============!!!");
-    printf("=============checkpoint func is called==============!!!");
-    printf("=============checkpoint func is called==============!!!");
-    printf("=============checkpoint func is called==============!!!");
-    printf("=============checkpoint func is called==============!!!");
-    printf("=============checkpoint func is called==============!!!");
+    printf("=============checkpoint func is called==============!!!\n");
+
+    // 确保错误状态清除
+    _DBUS_ASSERT_ERROR_IS_CLEAR(error);
+
+    reply = NULL; // 初始化回复消息为 NULL
+
+    // 使用帮助函数获取目标连接和服务名称
+    found = bus_driver_get_conn_helper(connection, message, "PID", &service, &conn, error);
+    switch (found) {
+        case BUS_DRIVER_FOUND_SELF:
+            // 如果是获取自身的 PID
+            pid = _dbus_getpid();
+            break;
+        case BUS_DRIVER_FOUND_PEER:
+            // 如果是获取对等连接的 PID
+            if (!dbus_connection_get_unix_process_id(conn, &pid))
+                pid = DBUS_PID_UNSET; // 如果无法获取，设置为未定义
+            break;
+        case BUS_DRIVER_FOUND_ERROR:
+            // 如果查找连接时出错，跳到失败处理
+            /* fall through */
+        default:
+            goto failed;
+    }
+
+    // 如果 PID 未定义，设置错误并跳到失败处理
+    if (pid == DBUS_PID_UNSET) {
+        dbus_set_error(error, DBUS_ERROR_UNIX_PROCESS_ID_UNKNOWN, "Could not determine PID for '%s'", service);
+        goto failed;
+    }
+
+    printf("\n\n\n\npid is %lu==============\n\n\n\n", pid);
+
+    DBusMessageIter iter, array_iter;
+    const char *s;
+    // 创建一个方法返回消息
+    reply = dbus_message_new_method_return(message);
+    if (reply == NULL)
+        goto oom; // 如果创建失败，跳到内存不足处理
+
+    // 初始化主消息迭代器
+    dbus_message_iter_init_append(reply, &iter);
+    if (!dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, DBUS_TYPE_STRING_AS_STRING, &array_iter))
+        goto oom;
+
+    // 传递消息给客户端程序
+    // s = "CheckpointSuccessed";
+    // if (!dbus_message_iter_append_basic(&array_iter, DBUS_TYPE_STRING, &s))
+    //     goto failed;
+    // 将 PID 转换为字符串
+    char pid_str[30] = {'\0'};
+    memset(pid_str, '\0', sizeof(pid_str));
+    snprintf(pid_str, sizeof(pid_str), "%lu", pid);
+    if (!dbus_message_iter_append_basic(&array_iter, DBUS_TYPE_STRING, &pid_str))
+        goto failed;
+
+    // 关闭数组容器
+    if (!dbus_message_iter_close_container(&iter, &array_iter))
+        goto oom;
+
+    // 通过事务发送回复消息
+    if (!bus_transaction_send_from_driver(transaction, connection, reply))
+        goto oom; // 如果发送失败，跳到内存不足处理
+
+    dbus_message_unref(reply); // 释放回复消息
 
     return TRUE;
 
@@ -1456,12 +1527,14 @@ oom:
     BUS_SET_OOM(error);
 
 failed:
+    // 只有在 open_container 成功后才调用 abandon_container
     _DBUS_ASSERT_ERROR_IS_SET(error);
     if (reply)
         dbus_message_unref(reply);
     return FALSE;
 }
 
+// 处理获取连接对应的 UNIX 进程 ID 的请求。它从消息中提取服务名称，找到对应的连接，并返回该连接的进程 ID
 static dbus_bool_t bus_driver_handle_get_connection_unix_process_id(DBusConnection *connection,
                                                                     BusTransaction *transaction, DBusMessage *message,
                                                                     DBusError *error)
@@ -1473,53 +1546,65 @@ static dbus_bool_t bus_driver_handle_get_connection_unix_process_id(DBusConnecti
     const char *service;
     BusDriverFound found;
 
+    // 确保错误状态清除
     _DBUS_ASSERT_ERROR_IS_CLEAR(error);
 
-    reply = NULL;
+    reply = NULL; // 初始化回复消息为 NULL
 
+    // 使用帮助函数获取目标连接和服务名称
     found = bus_driver_get_conn_helper(connection, message, "PID", &service, &conn, error);
     switch (found) {
         case BUS_DRIVER_FOUND_SELF:
+            // 如果是获取自身的 PID
             pid = _dbus_getpid();
             break;
         case BUS_DRIVER_FOUND_PEER:
+            // 如果是获取对等连接的 PID
             if (!dbus_connection_get_unix_process_id(conn, &pid))
-                pid = DBUS_PID_UNSET;
+                pid = DBUS_PID_UNSET; // 如果无法获取，设置为未定义
             break;
         case BUS_DRIVER_FOUND_ERROR:
+            // 如果查找连接时出错，跳到失败处理
             /* fall through */
         default:
             goto failed;
     }
 
+    // 如果 PID 未定义，设置错误并跳到失败处理
     if (pid == DBUS_PID_UNSET) {
         dbus_set_error(error, DBUS_ERROR_UNIX_PROCESS_ID_UNKNOWN, "Could not determine PID for '%s'", service);
         goto failed;
     }
 
+    // 创建一个方法返回消息
     reply = dbus_message_new_method_return(message);
     if (reply == NULL)
-        goto oom;
+        goto oom; // 如果创建失败，跳到内存不足处理
 
+    // 将 PID 转换为 32 位无符号整数
     pid32 = pid;
+    // 将 PID 添加到回复消息中
     if (!dbus_message_append_args(reply, DBUS_TYPE_UINT32, &pid32, DBUS_TYPE_INVALID))
-        goto oom;
+        goto oom; // 如果添加失败，跳到内存不足处理
 
+    // 通过事务发送回复消息
     if (!bus_transaction_send_from_driver(transaction, connection, reply))
-        goto oom;
+        goto oom; // 如果发送失败，跳到内存不足处理
 
-    dbus_message_unref(reply);
+    dbus_message_unref(reply); // 释放回复消息
 
-    return TRUE;
+    return TRUE; // 成功返回
 
 oom:
-    BUS_SET_OOM(error);
+    // 内存不足处理
+    BUS_SET_OOM(error); // 设置内存不足错误
 
 failed:
-    _DBUS_ASSERT_ERROR_IS_SET(error);
+    // 失败处理
+    _DBUS_ASSERT_ERROR_IS_SET(error); // 确保错误已经设置
     if (reply)
-        dbus_message_unref(reply);
-    return FALSE;
+        dbus_message_unref(reply); // 如果回复消息已创建，释放它
+    return FALSE; // 返回失败
 }
 
 static dbus_bool_t bus_driver_handle_get_adt_audit_session_data(DBusConnection *connection, BusTransaction *transaction,
@@ -2199,8 +2284,8 @@ static const MessageHandler dbus_message_handlers[] = {
     { "GetConnectionCredentials", "s", "a{sv}", bus_driver_handle_get_connection_credentials, METHOD_FLAG_ANY_PATH },
 
     // 增加checkpoint函数
-    { "Checkpoint", DBUS_TYPE_STRING_AS_STRING, DBUS_TYPE_BOOLEAN_AS_STRING, bus_driver_handle_checkpoint,
-      METHOD_FLAG_ANY_PATH },
+    { "Checkpoint", DBUS_TYPE_STRING_AS_STRING, DBUS_TYPE_ARRAY_AS_STRING DBUS_TYPE_STRING_AS_STRING,
+      bus_driver_handle_checkpoint, METHOD_FLAG_ANY_PATH },
 
     { NULL, NULL, NULL, NULL }
 };
