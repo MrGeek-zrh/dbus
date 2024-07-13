@@ -4296,6 +4296,7 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
 
     // 如果内建过滤器已启用，则运行内建过滤器
     // 目前其实就是处理peer接口
+    // 先跳过
     if (connection->builtin_filters_enabled) {
         result = _dbus_connection_run_builtin_filters_unlocked_no_update(connection, message);
         if (result != DBUS_HANDLER_RESULT_NOT_YET_HANDLED)
@@ -4303,6 +4304,8 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     }
 
     // 复制过滤器列表
+    // 研究研究
+    // 这个过滤列表啥时候初始化的？
     if (!_dbus_list_copy(&connection->filter_list, &filter_list_copy)) {
         _dbus_connection_release_dispatch(connection);
         HAVE_LOCK_CHECK(connection);
@@ -4317,6 +4320,8 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     }
 
     // 引用过滤器
+    // 遍历链表
+    // 这个是过滤器链表
     for (link = _dbus_list_get_first_link(&filter_list_copy); link != NULL;
          link = _dbus_list_get_next_link(&filter_list_copy, link))
         _dbus_message_filter_ref(link->data);
@@ -4324,6 +4329,7 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     // 解锁连接，开始调用过滤器
     CONNECTION_UNLOCK(connection);
 
+    // 遍历过滤器，进行回掉函数调用，处理消息
     link = _dbus_list_get_first_link(&filter_list_copy);
     while (link != NULL) {
         DBusMessageFilter *filter = link->data;
@@ -4335,7 +4341,10 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
             continue;
         }
 
+        // 调用过滤器的回掉函数
+        // TODO:
         _dbus_verbose("  running filter on message %p\n", message);
+        // 这个filter->data我觉得就是放过滤器回掉函数的处理结果数据的
         result = (*filter->function)(connection, message, filter->user_data);
 
         if (result != DBUS_HANDLER_RESULT_NOT_YET_HANDLED)
@@ -4343,16 +4352,20 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
 
         link = next;
     }
+    // 下面的看起来就是没有过滤器的消息？暂时应该不需要看
 
     _dbus_list_clear_full(&filter_list_copy, (DBusFreeFunction)_dbus_message_filter_unref);
 
+    // 这些lock不太懂，还是要再看看
     CONNECTION_LOCK(connection);
 
     if (result == DBUS_HANDLER_RESULT_NEED_MEMORY) {
         _dbus_verbose("No memory\n");
         goto out;
+        // 消息处理完毕
     } else if (result == DBUS_HANDLER_RESULT_HANDLED) {
         _dbus_verbose("filter handled message in dispatch\n");
+        // 处理完毕
         goto out;
     }
 
