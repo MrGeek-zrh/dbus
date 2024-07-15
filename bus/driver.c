@@ -23,6 +23,7 @@
  */
 
 #include "dbus/dbus-protocol.h"
+#include "dbus/dbus-sysdeps.h"
 #include <config.h>
 #include "activation.h"
 #include "apparmor.h"
@@ -45,6 +46,9 @@
 #include <dbus/dbus-marshal-validate.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/errno.h>
+#include <unistd.h>
+#include <limits.h>
 
 static inline const char *nonnull(const char *maybe_null, const char *if_null)
 {
@@ -1444,6 +1448,261 @@ failed:
     return FALSE;
 }
 
+static void exec_criu(struct criu_opts *opts)
+{
+    char **argv, log[PATH_MAX], buf[257];
+    int static_args = 14, argc = 0, i, ret;
+
+    /* 构建 CRIU 命令行参数数组。
+      * 命令行通常如下：
+      * criu $(action) --tcp-established --file-locks --link-remap --force-irmap \
+      * --manage-cgroups action-script foo.sh -D $(directory) \
+      * -o $(directory)/$(action).log
+      * +1 表示最后的 NULL */
+      /**
+        criu dump -D /path/to/images -t pid -o dump.log -v4 --external unix[11890815]
+      */
+
+    // 根据不同的操作（dump 或 restore），增加静态参数数量
+    if (strcmp(opts->action, "dump") == 0) {
+        /* -t pid 参数 */
+        static_args += 2;
+
+        /* --leave-running 参数（如果 stop 为 false） */
+        if (!opts->stop)
+            static_args++;
+    } else if (strcmp(opts->action, "restore") == 0) {
+        /* restore 操作的额外参数 */
+        static_args += 8;
+    } else {
+        return; // 如果不是 dump 或 restore 操作，直接返回
+    }
+
+    // 如果 verbose 为 true，增加一个参数
+    // -v选项
+    if (opts->verbose)
+        static_args++;
+
+    // 构建日志文件路径
+    ret = snprintf(log, PATH_MAX, "%s/%s.log", opts->directory, opts->action);
+    if (ret < 0 || ret >= PATH_MAX) {
+        ERROR("logfile name too long\n");
+        return;
+    }
+
+    // 分配 argv 数组
+    argv = malloc(static_args * sizeof(*argv));
+    if (!argv)
+        return;
+
+    // 将 argv 数组初始化为 NULL
+    memset(argv, 0, static_args * sizeof(*argv));
+
+    // 宏定义，用于添加参数到 argv 数组
+#define DECLARE_ARG(arg)                         \
+    do {                                         \
+        if (arg == NULL) {                       \
+            ERROR("Got NULL argument for criu"); \
+            goto err;                            \
+        }                                        \
+        argv[argc++] = strdup(arg);              \
+        if (!argv[argc - 1])                     \
+            goto err;                            \
+    } while (0)
+
+    // 添加 criu 命令到 argv 数组
+    argv[argc++] = on_path("criu", NULL);
+    if (!argv[argc - 1]) {
+        ERROR("Couldn't find criu binary\n");
+        goto err;
+    }
+
+    // 添加公共参数到 argv 数组
+    DECLARE_ARG(opts->action);
+    DECLARE_ARG("--tcp-established");
+    DECLARE_ARG("--file-locks");
+    DECLARE_ARG("--link-remap");
+    DECLARE_ARG("--force-irmap");
+    DECLARE_ARG("--manage-cgroups");
+    DECLARE_ARG("--action-script");
+    DECLARE_ARG(DATADIR "/lxc/lxc-restore-net");
+    DECLARE_ARG("-D");
+    DECLARE_ARG(opts->directory);
+    DECLARE_ARG("-o");
+    DECLARE_ARG(log);
+
+    // 如果 verbose 为 true，添加详细日志参数
+    if (opts->verbose)
+        DECLARE_ARG("-vvvvvv");
+
+    // 根据不同的操作，添加不同的参数
+    if (strcmp(opts->action, "dump") == 0) {
+        char pid[32];
+
+        // 获取容器的初始 PID
+        if (sprintf(pid, "%d", lxcapi_init_pid(opts->c)) < 0)
+            goto err;
+
+        // 添加 dump 操作的特定参数
+        DECLARE_ARG("-t");
+        DECLARE_ARG(pid);
+        if (!opts->stop)
+            DECLARE_ARG("--leave-running");
+    } else if (strcmp(opts->action, "restore") == 0) {
+        // 添加 restore 操作的特定参数
+        DECLARE_ARG("--root");
+        DECLARE_ARG(opts->c->lxc_conf->rootfs.mount);
+        DECLARE_ARG("--restore-detached");
+        DECLARE_ARG("--restore-sibling");
+        DECLARE_ARG("--pidfile");
+        DECLARE_ARG(opts->pidfile);
+        DECLARE_ARG("--cgroup-root");
+        DECLARE_ARG(opts->cgroup_path);
+
+        // 遍历容器的网络配置，添加网络相关参数
+        lxc_list_for_each(it, &opts->c->lxc_conf->network)
+        {
+            char eth[128], *veth;
+            void *m;
+            struct lxc_netdev *n = it->elem;
+
+            // 设置以太网接口名称
+            if (n->name) {
+                if (strlen(n->name) >= sizeof(eth))
+                    goto err;
+                strncpy(eth, n->name, sizeof(eth));
+            } else {
+                sprintf(eth, "eth%d", netnr);
+            }
+
+            // 获取虚拟以太网设备对的名称
+            veth = n->priv.veth_attr.pair;
+
+            // 格式化以太网接口和虚拟以太网设备对的名称
+            ret = snprintf(buf, sizeof(buf), "%s=%s", eth, veth);
+            if (ret < 0 || ret >= sizeof(buf))
+                goto err;
+
+            // 重新分配 argv 数组以增加新的参数
+            m = realloc(argv, (argc + 1 + 2) * sizeof(*argv));
+            if (!m)
+                goto err;
+            argv = m;
+
+            // 添加 --veth-pair 参数及其值
+            DECLARE_ARG("--veth-pair");
+            DECLARE_ARG(buf);
+
+            // 确保参数数组以 NULL 结尾
+            argv[argc] = NULL;
+
+            // 增加网络接口计数器
+            netnr++;
+        }
+    }
+
+    // 重置网络接口计数器，设置环境变量用于网络恢复
+    netnr = 0;
+    lxc_list_for_each(it, &opts->c->lxc_conf->network)
+    {
+        struct lxc_netdev *n = it->elem;
+        char veth[128];
+
+        /*
+          * 这里我们设置一些参数，lxc-restore-net 将会检查这些参数
+          * 以找出正确的网络来恢复。
+          */
+        snprintf(buf, sizeof(buf), "LXC_CRIU_BRIDGE%d", netnr);
+        if (setenv(buf, n->link, 1))
+            goto err;
+
+        if (strcmp("restore", opts->action) == 0)
+            strncpy(veth, n->priv.veth_attr.pair, sizeof(veth));
+        else {
+            char *tmp;
+            ret = snprintf(buf, sizeof(buf), "lxc.network.%d.veth.pair", netnr);
+            if (ret < 0 || ret >= sizeof(buf))
+                goto err;
+            tmp = lxcapi_get_running_config_item(opts->c, buf);
+            strncpy(veth, tmp, sizeof(veth));
+            free(tmp);
+        }
+
+        snprintf(buf, sizeof(buf), "LXC_CRIU_VETH%d", netnr);
+        if (setenv(buf, veth, 1))
+            goto err;
+
+        netnr++;
+    }
+
+    // 执行 CRIU 命令
+#undef DECLARE_ARG
+    execv(argv[0], argv);
+err:
+    // 发生错误时，释放已分配的内存
+    for (i = 0; argv[i]; i++)
+        free(argv[i]);
+    free(argv);
+}
+
+static bool criu_ok()
+{
+    return true;
+}
+
+/*
+1. 检查系统是否支持criu
+2. 确定请求c/r的客户为root权限
+*/
+static dbus_bool_t checkoutpoint(dbus_pid_t pid, char *directory, dbus_bool_t stop, dbus_bool_t verbose){
+
+    int status;
+
+    //1. 检查系统是否支持criu
+    if (!criu_ok())
+        return FALSE;
+
+    // 尝试创建保存检查点数据的目录，权限为 0700
+    if (mkdir(directory, 0700) < 0 && errno != EEXIST)
+        return FALSE;
+
+    // fork 当前进程以创建用于检查点的子进程
+    pid = fork();
+    if (pid < 0)
+        return FALSE; // fork 失败
+
+    if (pid == 0) {
+        // 子进程：准备并执行用于检查点的 CRIU 命令
+
+        struct criu_opts os;
+        os.action = "dump"; // 将操作设置为 "dump" 以进行检查点
+        os.directory = directory; // 设置检查点数据的目录
+        os.stop = stop; // 传递停止标志
+        os.verbose = verbose; // 传递详细标志
+
+        // 执行 CRIU 命令；如果 exec_criu() 返回，则发生错误
+        exec_criu(&os);
+        exit(1); // 如果 exec_criu() 返回，则以错误状态退出
+    } else {
+        // 父进程：等待子进程完成
+
+        pid_t w = waitpid(pid, &status, 0); // 等待子进程
+        if (w == -1) {
+            perror("waitpid"); // 如果 waitpid() 失败，打印错误消息
+            return false;
+        }
+
+        // 检查子进程是否正常退出
+        if (WIFEXITED(status)) {
+            // 如果子进程以状态 0（成功）退出，则返回 true，否则返回 false
+            return !WEXITSTATUS(status);
+        }
+
+        // 如果子进程未正常退出，则返回 false
+        return false;
+    }
+}
+
 // 对checkpoint/restore功能的实现
 static dbus_bool_t bus_driver_handle_checkpoint(DBusConnection *connection, BusTransaction *transaction,
                                                 DBusMessage *message, DBusError *error)
@@ -1453,6 +1712,7 @@ static dbus_bool_t bus_driver_handle_checkpoint(DBusConnection *connection, BusT
     dbus_pid_t pid;
     const char *service;
     BusDriverFound found;
+    const char *s;
 
     printf("=============checkpoint func is called==============!!!\n");
 
@@ -1488,32 +1748,18 @@ static dbus_bool_t bus_driver_handle_checkpoint(DBusConnection *connection, BusT
 
     printf("\n\n\n\npid is %lu==============\n\n\n\n", pid);
 
-    DBusMessageIter iter, array_iter;
-    const char *s;
+    // 获取进程id成功，接下来开始进程checkpoint
+    checkoutpoint();
+
     // 创建一个方法返回消息
     reply = dbus_message_new_method_return(message);
     if (reply == NULL)
         goto oom; // 如果创建失败，跳到内存不足处理
 
-    // 初始化主消息迭代器
-    dbus_message_iter_init_append(reply, &iter);
-    if (!dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, DBUS_TYPE_STRING_AS_STRING, &array_iter))
-        goto oom;
-
-    // 传递消息给客户端程序
-    // s = "CheckpointSuccessed";
-    // if (!dbus_message_iter_append_basic(&array_iter, DBUS_TYPE_STRING, &s))
-    //     goto failed;
-    // 将 PID 转换为字符串
-    char pid_str[30] = {'\0'};
-    memset(pid_str, '\0', sizeof(pid_str));
-    snprintf(pid_str, sizeof(pid_str), "%lu", pid);
-    if (!dbus_message_iter_append_basic(&array_iter, DBUS_TYPE_STRING, &pid_str))
-        goto failed;
-
-    // 关闭数组容器
-    if (!dbus_message_iter_close_container(&iter, &array_iter))
-        goto oom;
+    s = "CheckpointSuccessed";
+    // 将 PID 添加到回复消息中
+    if (!dbus_message_append_args(reply, DBUS_TYPE_STRING, &s, DBUS_TYPE_INVALID))
+        goto oom; // 如果添加失败，跳到内存不足处理
 
     // 通过事务发送回复消息
     if (!bus_transaction_send_from_driver(transaction, connection, reply))
@@ -2284,8 +2530,8 @@ static const MessageHandler dbus_message_handlers[] = {
     { "GetConnectionCredentials", "s", "a{sv}", bus_driver_handle_get_connection_credentials, METHOD_FLAG_ANY_PATH },
 
     // 增加checkpoint函数
-    { "Checkpoint", DBUS_TYPE_STRING_AS_STRING, DBUS_TYPE_ARRAY_AS_STRING DBUS_TYPE_STRING_AS_STRING,
-      bus_driver_handle_checkpoint, METHOD_FLAG_ANY_PATH },
+    { "Checkpoint", DBUS_TYPE_STRING_AS_STRING, DBUS_TYPE_STRING_AS_STRING, bus_driver_handle_checkpoint,
+      METHOD_FLAG_ANY_PATH },
 
     { NULL, NULL, NULL, NULL }
 };

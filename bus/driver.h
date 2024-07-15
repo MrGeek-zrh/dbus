@@ -33,6 +33,25 @@ typedef enum {
     BUS_DRIVER_FOUND_ERROR  // 表示在查找服务时发生了错误，未能找到服务
 } BusDriverFound;
 
+struct criu_opts {
+    /* The type of criu invocation, one of "dump" or "restore" */
+    char *action;
+
+    /* The directory to pass to criu */
+    char *directory;
+
+    /* Enable criu verbose mode? */
+    dbus_bool_t verbose;
+
+    /* dump: stop the container or not after dumping? */
+    dbus_bool_t stop;
+
+    /* restore: the file to write the init process' pid into */
+    char *pidfile;
+    // TODO:
+    const char *cgroup_path;
+};
+
 void bus_driver_remove_connection(DBusConnection *connection);
 dbus_bool_t bus_driver_handle_message(DBusConnection *connection, BusTransaction *transaction, DBusMessage *message,
                                       DBusError *error);
