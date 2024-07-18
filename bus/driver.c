@@ -44,6 +44,7 @@
 #include <dbus/dbus-message.h>
 #include <dbus/dbus-marshal-recursive.h>
 #include <dbus/dbus-marshal-validate.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,6 +53,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <limits.h>
+#include <fcntl.h>
 
 static inline const char *nonnull(const char *maybe_null, const char *if_null)
 {
@@ -1456,11 +1458,30 @@ static dbus_bool_t criu_ok()
     return TRUE;
 }
 
-static dbus_bool_t gen_arg(struct criu_opts *opts, char **argv)
+static dbus_bool_t touch_file(char *filename)
 {
+    // 使用 open 系统调用创建或截断文件
+    int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd == -1) {
+        perror("open");
+        return FALSE; // FALSE
+    }
+
+    // 关闭文件描述符
+    if (close(fd) == -1) {
+        perror("close");
+        return FALSE; // FALSE
+    }
+
+    return TRUE; // TRUE
+}
+
+static char **gen_arg(struct criu_opts *opts, dbus_bool_t *success)
+{
+    char **argv;
     char log[PATH_MAX];
     // static_args 多一个用来作为null
-    int static_args = 14, argc = 0, i, ret;
+    int static_args = 17, argc = 0, i, ret;
 
     /*
     // 3. 构建criu参数
@@ -1479,7 +1500,8 @@ static dbus_bool_t gen_arg(struct criu_opts *opts, char **argv)
         /* restore 操作的额外参数 */
         static_args += 8;
     } else {
-        return FALSE; // 如果不是 dump 或 restore 操作，直接返回
+        *success = FALSE;
+        return NULL; // 如果不是 dump 或 restore 操作，直接返回
     }
 
     // 如果 verbose 为 true，增加一个参数
@@ -1491,13 +1513,18 @@ static dbus_bool_t gen_arg(struct criu_opts *opts, char **argv)
     ret = snprintf(log, PATH_MAX, "%s/%s.log", opts->directory, opts->action);
     if (ret < 0 || ret >= PATH_MAX) {
         printf("logfile name too long\n");
-        return FALSE;
+        *success = FALSE;
+        return NULL;
     }
+    // 创建log日志文件
+    touch_file(log);
 
     // 分配 argv 数组
-    argv = malloc(static_args * sizeof(*argv));
-    if (!argv)
-        return FALSE;
+    argv = (char **)malloc(static_args * sizeof(*argv));
+    if (!argv) {
+        *success = FALSE;
+        return NULL;
+    }
     // 将 argv 数组初始化为 NULL
     memset(argv, 0, static_args * sizeof(*argv));
 
@@ -1514,6 +1541,7 @@ static dbus_bool_t gen_arg(struct criu_opts *opts, char **argv)
     } while (0)
 
     // 添加 criu 命令到 argv 数组
+    DECLARE_ARG("/usr/bin/sudo");
     argv[argc++] = on_path("criu", NULL);
     if (!argv[argc - 1]) {
         printf("Couldn't find criu binary\n");
@@ -1528,6 +1556,11 @@ static dbus_bool_t gen_arg(struct criu_opts *opts, char **argv)
     memset(pid, '\0', sizeof(pid));
     snprintf(pid, sizeof(pid), "%lu", opts->pid);
     DECLARE_ARG(pid);
+
+    // 如果 verbose 为 true，添加详细日志参数
+    if (opts->verbose) {
+        DECLARE_ARG("-vvvvvv");
+    }
 
     DECLARE_ARG("--file-locks");
     DECLARE_ARG("--link-remap");
@@ -1548,9 +1581,8 @@ static dbus_bool_t gen_arg(struct criu_opts *opts, char **argv)
     snprintf(unix_inode, sizeof(unix_inode), "unix[%u]", opts->inode);
     DECLARE_ARG(unix_inode);
 
-    // 如果 verbose 为 true，添加详细日志参数
-    if (opts->verbose)
-        DECLARE_ARG("-v4");
+    // 最后一个参数为 NULL，表示参数列表结束
+    argv[argc] = NULL;
 
 // 根据不同的操作，添加不同的参数
 #if 0
@@ -1641,40 +1673,94 @@ static dbus_bool_t gen_arg(struct criu_opts *opts, char **argv)
     }
 #endif
 #undef DECLARE_ARG
-    return TRUE;
+
+    *success = TRUE;
+    return argv;
 err:
     // 发生错误时，释放已分配的内存
     for (i = 0; argv[i]; i++)
         free(argv[i]);
     free(argv);
-    return FALSE;
+    *success = FALSE;
+    return NULL;
 }
 
-static dbus_bool_t save_service_status(){
+static dbus_bool_t save_service_status()
+{
     return TRUE;
 }
 
-static dbus_bool_t exec_criu(char ** argv){
-
+static void exec_criu(char **argv)
+{
     if (argv == NULL) {
         printf("=====================");
         printf("argv is NULL\n");
-        return FALSE;
+        return;
     }
 
     int i = 0;
     while (argv[i] != NULL) {
-        printf("\n=====================");
+        printf("\n=====================\n");
         printf("argv[%d]: %s\n", i, argv[i]);
-        printf("\n=====================");
+        printf("\n=====================\n");
         i++;
     }
 
+    // 如何确定这里的命令是否按照预期执行了呢？
+    execv(argv[0], argv);
+    perror("execv");
+}
+
+static dbus_bool_t is_root()
+{
     return TRUE;
 }
 
-static dbus_bool_t is_root(){
-    return TRUE;
+// 获取pid拥有的unix path对应的inode编号
+static dbus_uint32_t getinode(dbus_pid_t pid)
+{
+    if (pid == 0) {
+        fprintf(stderr, "Error: Invalid PID %lu\n", pid);
+        return 0;
+    }
+
+    char command[256];
+    memset(command, '\0', sizeof(command));
+    snprintf(command, sizeof(command), "sudo lsof -p %lu | grep unix | grep STREAM", pid);
+
+    FILE *fp = popen(command, "r");
+    if (fp == NULL) {
+        perror("popen");
+        return 0;
+    }
+
+    char buffer[1024];
+    dbus_uint32_t inode = 0;
+    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+        char *token = strtok(buffer, " ");
+        int field_count = 0;
+        while (token != NULL) {
+            field_count++;
+            if (field_count == 8) {
+                inode = (dbus_uint32_t)strtoul(token, NULL, 10);
+                break;
+            }
+            token = strtok(NULL, " ");
+        }
+        if (inode != 0) {
+            break;
+        }
+    }
+
+    pclose(fp);
+
+    if (inode == 0) {
+        fprintf(stderr, "Error: Unable to extract inode from socket info for PID %lu.\n", pid);
+    } else {
+        printf("Found inode: %u for PID %lu.\n", inode, pid);
+    }
+
+    return inode;
 }
 
 /*
@@ -1687,51 +1773,58 @@ static dbus_bool_t is_root(){
 */
 static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbose)
 {
-    int status;
-
     //1. 检查系统是否支持criu
     if (!criu_ok())
         return FALSE;
 
     // 2. 必须以root身份执行
+    // 获取没有这个必要
     if (!is_root())
         return FALSE;
 
     // 3. 创建必要的文件/文件夹
-    if (mkdir(directory, 0700) < 0 && errno != EEXIST)
+    if (mkdir(directory, 0766) < 0 && errno != EEXIST)
         return FALSE;
 
     // fork 当前进程以创建用于检查点的子进程
-    pid = fork();
-    if (pid < 0)
+    dbus_pid_t sub_pid = fork();
+    if (sub_pid < 0)
         return FALSE; // fork 失败
 
-    // 子进程：准备并执行用于检查点的 CRIU 命令
-    if (pid == 0) {
+    int status;
+    if (sub_pid == 0) {
+        // 子进程：准备并执行用于检查点的 CRIU 命令
         struct criu_opts os;
         os.action = "dump"; // 将操作设置为 "dump" 以进行检查点
         os.directory = directory; // 设置检查点数据的目录
         os.verbose = verbose; // 传递详细标志
+        os.pid = pid;
+        os.inode = getinode(pid); // 获取进程拥有的 inode 号
+        os.system_bus_socket_path = SYSTEM_BUS_SOCKET_PATH; // 设置系统总线套接字路径
+        os.inodefile = SYSTEM_BUS_INODE_FILE; // 设置系统总线 inode 文件路径
 
         // 4. 构建criu参数
-        char **argv;
-        if (!gen_arg(&os, argv))
-            return FALSE;
-        printf("gen_arg pass");
+        dbus_bool_t success = TRUE;
+        char **argv = gen_arg(&os, &success);
+        if (!success)
+            // return FALSE;
+            exit(1);
+        printf("gen_arg pass\n");
 
         // 5. 保存服务再dbus-daemon中的状态
         if (!save_service_status())
-            return FALSE;
+            // return FALSE;
+            exit(1);
+        printf("save_service_status pass\n");
 
         // 6. 使用exec执行criu指令
-        if (!exec_criu(argv))
-            return FALSE;
-        printf("exec_criu pass");
-        // 子进程的status目前设置的还是不太好,后面再改正吧
-        exit(0); // 如果 exec_criu() 返回，则以错误状态退出
+        // 进行checkpoint的时候需要将inode编号保存到文件中，这样在restore的时候才能找到对应的inode
+        exec_criu(argv);
+        exit(1); // 如果 exec_criu() 返回，则以错误状态退出
     } else {
         // 父进程：等待子进程完成
-        pid_t w = waitpid(pid, &status, 0); // 等待子进程
+
+        pid_t w = waitpid(sub_pid, &status, 0); // 等待子进程
         if (w == -1) {
             perror("waitpid"); // 如果 waitpid() 失败，打印错误消息
             return FALSE;
@@ -1746,6 +1839,7 @@ static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbo
         // 如果子进程未正常退出，则返回 false
         return FALSE;
     }
+    return TRUE;
 }
 
 // 对checkpoint/restore功能的实现
@@ -1794,11 +1888,11 @@ static dbus_bool_t bus_driver_handle_checkpoint(DBusConnection *connection, BusT
     printf("\n\n\n\npid is %lu==============\n\n\n\n", pid);
 
     // 获取进程id成功，接下来开始进程checkpoint
-    char * directory = "/tmp/criu/service/";
+    char *directory = "/tmp/criu";
     dbus_bool_t verbose = TRUE;
-    if(!checkpoint(pid, directory,verbose))
+    if (!checkpoint(pid, directory, verbose))
         return FALSE;
-    printf("\n\n\t\tcheckpoint process successed! pid is %lu\n\n",pid);
+    printf("\n\n\t\tcheckpoint process successed! pid is %lu\n\n", pid);
 
     // 创建一个方法返回消息
     reply = dbus_message_new_method_return(message);

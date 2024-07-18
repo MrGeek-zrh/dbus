@@ -34,7 +34,8 @@ typedef enum {
 } BusDriverFound;
 
 // 默认的system bus path
-#define SYSTEM_BUS_SOCKET_PATH "/run/dbus/system_bus_socket/"
+#define SYSTEM_BUS_SOCKET_PATH "/run/dbus/system_bus_socket"
+#define SYSTEM_BUS_INODE_FILE "/run/dbus/sytem_bus_socket/inode.txt"
 struct criu_opts {
     /* The type of criu invocation, one of "dump" or "restore" */
     const char *action;
@@ -48,10 +49,10 @@ struct criu_opts {
     // pid to dump
     dbus_pid_t pid;
 
-    // inode of /run/dbus/system_bus_socket/ (这个就是system bus的默认socket path)
+    // 提供服务的进程拥有的socket文件的inode
     dbus_uint32_t inode;
 
-    // 默认应该是/run/dbus/system_bus_socket/
+    // 默认应该是/run/dbus/system_bus_socket
     char * system_bus_socket_path;
 
     /* restore: the file to write the inode */
