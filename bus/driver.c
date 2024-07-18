@@ -45,8 +45,11 @@
 #include <dbus/dbus-marshal-recursive.h>
 #include <dbus/dbus-marshal-validate.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/errno.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <limits.h>
 
@@ -1448,107 +1451,110 @@ failed:
     return FALSE;
 }
 
-static void exec_criu(struct criu_opts *opts)
+static dbus_bool_t criu_ok()
 {
-    char **argv, log[PATH_MAX], buf[257];
+    return TRUE;
+}
+
+static dbus_bool_t gen_arg(struct criu_opts *opts, char **argv)
+{
+    char log[PATH_MAX];
+    // static_args 多一个用来作为null
     int static_args = 14, argc = 0, i, ret;
 
-    /* 构建 CRIU 命令行参数数组。
-      * 命令行通常如下：
-      * criu $(action) --tcp-established --file-locks --link-remap --force-irmap \
-      * --manage-cgroups action-script foo.sh -D $(directory) \
-      * -o $(directory)/$(action).log
-      * +1 表示最后的 NULL */
-      /**
-        criu dump -D /path/to/images -t pid -o dump.log -v4 --external unix[11890815]
+    /*
+    // 3. 构建criu参数
+    criu dump -t $pid -v4 \
+    // 下面这几个参数都是默认会有的
+		--ext-unix-sk --file-locks --link-remap --force-irmap \
+		--manage-cgroups --enable-external-sharing --enable-external-masters \
+		-D $dump_path -o $checkpoint_log \
+		--external unix[$inode]
       */
-
     // 根据不同的操作（dump 或 restore），增加静态参数数量
     if (strcmp(opts->action, "dump") == 0) {
-        /* -t pid 参数 */
+        /* -t pid */
         static_args += 2;
-
-        /* --leave-running 参数（如果 stop 为 false） */
-        if (!opts->stop)
-            static_args++;
     } else if (strcmp(opts->action, "restore") == 0) {
         /* restore 操作的额外参数 */
         static_args += 8;
     } else {
-        return; // 如果不是 dump 或 restore 操作，直接返回
+        return FALSE; // 如果不是 dump 或 restore 操作，直接返回
     }
 
     // 如果 verbose 为 true，增加一个参数
-    // -v选项
+    // -v4选项
     if (opts->verbose)
         static_args++;
 
     // 构建日志文件路径
     ret = snprintf(log, PATH_MAX, "%s/%s.log", opts->directory, opts->action);
     if (ret < 0 || ret >= PATH_MAX) {
-        ERROR("logfile name too long\n");
-        return;
+        printf("logfile name too long\n");
+        return FALSE;
     }
 
     // 分配 argv 数组
     argv = malloc(static_args * sizeof(*argv));
     if (!argv)
-        return;
-
+        return FALSE;
     // 将 argv 数组初始化为 NULL
     memset(argv, 0, static_args * sizeof(*argv));
 
     // 宏定义，用于添加参数到 argv 数组
-#define DECLARE_ARG(arg)                         \
-    do {                                         \
-        if (arg == NULL) {                       \
-            ERROR("Got NULL argument for criu"); \
-            goto err;                            \
-        }                                        \
-        argv[argc++] = strdup(arg);              \
-        if (!argv[argc - 1])                     \
-            goto err;                            \
+#define DECLARE_ARG(arg)                          \
+    do {                                          \
+        if (arg == NULL) {                        \
+            printf("Got NULL argument for criu"); \
+            goto err;                             \
+        }                                         \
+        argv[argc++] = strdup(arg);               \
+        if (!argv[argc - 1])                      \
+            goto err;                             \
     } while (0)
 
     // 添加 criu 命令到 argv 数组
     argv[argc++] = on_path("criu", NULL);
     if (!argv[argc - 1]) {
-        ERROR("Couldn't find criu binary\n");
+        printf("Couldn't find criu binary\n");
         goto err;
     }
 
     // 添加公共参数到 argv 数组
     DECLARE_ARG(opts->action);
-    DECLARE_ARG("--tcp-established");
+
+    DECLARE_ARG("-t");
+    char pid[21];
+    memset(pid, '\0', sizeof(pid));
+    snprintf(pid, sizeof(pid), "%lu", opts->pid);
+    DECLARE_ARG(pid);
+
     DECLARE_ARG("--file-locks");
     DECLARE_ARG("--link-remap");
     DECLARE_ARG("--force-irmap");
     DECLARE_ARG("--manage-cgroups");
-    DECLARE_ARG("--action-script");
-    DECLARE_ARG(DATADIR "/lxc/lxc-restore-net");
+    DECLARE_ARG("--ext-unix-sk");
+    DECLARE_ARG("--enable-external-sharing");
+    DECLARE_ARG("--enable-external-masters");
+
     DECLARE_ARG("-D");
     DECLARE_ARG(opts->directory);
+
     DECLARE_ARG("-o");
     DECLARE_ARG(log);
 
+    DECLARE_ARG("--external");
+    char unix_inode[17];
+    snprintf(unix_inode, sizeof(unix_inode), "unix[%u]", opts->inode);
+    DECLARE_ARG(unix_inode);
+
     // 如果 verbose 为 true，添加详细日志参数
     if (opts->verbose)
-        DECLARE_ARG("-vvvvvv");
+        DECLARE_ARG("-v4");
 
-    // 根据不同的操作，添加不同的参数
-    if (strcmp(opts->action, "dump") == 0) {
-        char pid[32];
-
-        // 获取容器的初始 PID
-        if (sprintf(pid, "%d", lxcapi_init_pid(opts->c)) < 0)
-            goto err;
-
-        // 添加 dump 操作的特定参数
-        DECLARE_ARG("-t");
-        DECLARE_ARG(pid);
-        if (!opts->stop)
-            DECLARE_ARG("--leave-running");
-    } else if (strcmp(opts->action, "restore") == 0) {
+// 根据不同的操作，添加不同的参数
+#if 0
+    if (strcmp(opts->action, "restore") == 0) {
         // 添加 restore 操作的特定参数
         DECLARE_ARG("--root");
         DECLARE_ARG(opts->c->lxc_conf->rootfs.mount);
@@ -1600,7 +1606,6 @@ static void exec_criu(struct criu_opts *opts)
             netnr++;
         }
     }
-
     // 重置网络接口计数器，设置环境变量用于网络恢复
     netnr = 0;
     lxc_list_for_each(it, &opts->c->lxc_conf->network)
@@ -1634,35 +1639,65 @@ static void exec_criu(struct criu_opts *opts)
 
         netnr++;
     }
-
-    // 执行 CRIU 命令
+#endif
 #undef DECLARE_ARG
-    execv(argv[0], argv);
+    return TRUE;
 err:
     // 发生错误时，释放已分配的内存
     for (i = 0; argv[i]; i++)
         free(argv[i]);
     free(argv);
+    return FALSE;
 }
 
-static bool criu_ok()
-{
-    return true;
+static dbus_bool_t save_service_status(){
+    return TRUE;
+}
+
+static dbus_bool_t exec_criu(char ** argv){
+
+    if (argv == NULL) {
+        printf("=====================");
+        printf("argv is NULL\n");
+        return FALSE;
+    }
+
+    int i = 0;
+    while (argv[i] != NULL) {
+        printf("\n=====================");
+        printf("argv[%d]: %s\n", i, argv[i]);
+        printf("\n=====================");
+        i++;
+    }
+
+    return TRUE;
+}
+
+static dbus_bool_t is_root(){
+    return TRUE;
 }
 
 /*
-1. 检查系统是否支持criu
-2. 确定请求c/r的客户为root权限
+// 1. 检查系统是否支持criu
+// 2. 必须以root身份执行
+// 3. 创建必要的文件/文件夹
+// 4. 构建criu参数
+// 5. 保存服务再dbus-daemon中的状态
+// 6. 使用exec执行criu指令
 */
-static dbus_bool_t checkoutpoint(dbus_pid_t pid, char *directory, dbus_bool_t stop, dbus_bool_t verbose){
-
+static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbose)
+{
     int status;
 
     //1. 检查系统是否支持criu
     if (!criu_ok())
         return FALSE;
 
-    // 尝试创建保存检查点数据的目录，权限为 0700
+    // 2. 必须以root身份执行
+    if (!is_root())
+        return FALSE;
+
+    // 3. 创建必要的文件/文件夹
     if (mkdir(directory, 0700) < 0 && errno != EEXIST)
         return FALSE;
 
@@ -1671,25 +1706,35 @@ static dbus_bool_t checkoutpoint(dbus_pid_t pid, char *directory, dbus_bool_t st
     if (pid < 0)
         return FALSE; // fork 失败
 
+    // 子进程：准备并执行用于检查点的 CRIU 命令
     if (pid == 0) {
-        // 子进程：准备并执行用于检查点的 CRIU 命令
-
         struct criu_opts os;
         os.action = "dump"; // 将操作设置为 "dump" 以进行检查点
         os.directory = directory; // 设置检查点数据的目录
-        os.stop = stop; // 传递停止标志
         os.verbose = verbose; // 传递详细标志
 
-        // 执行 CRIU 命令；如果 exec_criu() 返回，则发生错误
-        exec_criu(&os);
-        exit(1); // 如果 exec_criu() 返回，则以错误状态退出
+        // 4. 构建criu参数
+        char **argv;
+        if (!gen_arg(&os, argv))
+            return FALSE;
+        printf("gen_arg pass");
+
+        // 5. 保存服务再dbus-daemon中的状态
+        if (!save_service_status())
+            return FALSE;
+
+        // 6. 使用exec执行criu指令
+        if (!exec_criu(argv))
+            return FALSE;
+        printf("exec_criu pass");
+        // 子进程的status目前设置的还是不太好,后面再改正吧
+        exit(0); // 如果 exec_criu() 返回，则以错误状态退出
     } else {
         // 父进程：等待子进程完成
-
         pid_t w = waitpid(pid, &status, 0); // 等待子进程
         if (w == -1) {
             perror("waitpid"); // 如果 waitpid() 失败，打印错误消息
-            return false;
+            return FALSE;
         }
 
         // 检查子进程是否正常退出
@@ -1699,7 +1744,7 @@ static dbus_bool_t checkoutpoint(dbus_pid_t pid, char *directory, dbus_bool_t st
         }
 
         // 如果子进程未正常退出，则返回 false
-        return false;
+        return FALSE;
     }
 }
 
@@ -1749,7 +1794,11 @@ static dbus_bool_t bus_driver_handle_checkpoint(DBusConnection *connection, BusT
     printf("\n\n\n\npid is %lu==============\n\n\n\n", pid);
 
     // 获取进程id成功，接下来开始进程checkpoint
-    checkoutpoint();
+    char * directory = "/tmp/criu/service/";
+    dbus_bool_t verbose = TRUE;
+    if(!checkpoint(pid, directory,verbose))
+        return FALSE;
+    printf("\n\n\t\tcheckpoint process successed! pid is %lu\n\n",pid);
 
     // 创建一个方法返回消息
     reply = dbus_message_new_method_return(message);

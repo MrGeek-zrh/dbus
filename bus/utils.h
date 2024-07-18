@@ -32,5 +32,6 @@ extern const char bus_no_memory_message[];
 
 void        bus_connection_dispatch_all_messages (DBusConnection *connection);
 dbus_bool_t bus_connection_dispatch_one_message  (DBusConnection *connection);
+char *on_path(char *cmd, const char *rootfs);
 
 #endif /* BUS_UTILS_H */

@@ -33,9 +33,11 @@ typedef enum {
     BUS_DRIVER_FOUND_ERROR  // 表示在查找服务时发生了错误，未能找到服务
 } BusDriverFound;
 
+// 默认的system bus path
+#define SYSTEM_BUS_SOCKET_PATH "/run/dbus/system_bus_socket/"
 struct criu_opts {
     /* The type of criu invocation, one of "dump" or "restore" */
-    char *action;
+    const char *action;
 
     /* The directory to pass to criu */
     char *directory;
@@ -43,11 +45,17 @@ struct criu_opts {
     /* Enable criu verbose mode? */
     dbus_bool_t verbose;
 
-    /* dump: stop the container or not after dumping? */
-    dbus_bool_t stop;
+    // pid to dump
+    dbus_pid_t pid;
 
-    /* restore: the file to write the init process' pid into */
-    char *pidfile;
+    // inode of /run/dbus/system_bus_socket/ (这个就是system bus的默认socket path)
+    dbus_uint32_t inode;
+
+    // 默认应该是/run/dbus/system_bus_socket/
+    char * system_bus_socket_path;
+
+    /* restore: the file to write the inode */
+    char *inodefile;
     // TODO:
     const char *cgroup_path;
 };
