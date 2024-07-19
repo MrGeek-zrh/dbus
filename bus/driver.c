@@ -1707,6 +1707,7 @@ static void exec_criu(char **argv)
     }
 
     // 如何确定这里的命令是否按照预期执行了呢？
+    // 目前还是无法checkpoint成功，可能只能考虑通过代理程序来进行checkpoint了
     execv(argv[0], argv);
     perror("execv");
 }
