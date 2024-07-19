@@ -10,8 +10,14 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // 提升权限到 root
+    if (setuid(0) != 0) {
+        perror("setuid");
+        return 1;
+    }
+
     // 执行传递的命令
-    execvp(argv[1], &argv[1]);
+    execvp(argv[0], argv);
 
     // 如果 execvp 失败，输出错误并返回
     perror("execvp");

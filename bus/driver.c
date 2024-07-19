@@ -1490,7 +1490,7 @@ static char **gen_arg(struct criu_opts *opts, dbus_bool_t *success)
 		--ext-unix-sk --file-locks --link-remap --force-irmap \
 		--manage-cgroups --enable-external-sharing --enable-external-masters \
 		-D $dump_path -o $checkpoint_log \
-		--external unix[$inode]
+		--external unix[$inode] --shell-job
       */
     // 根据不同的操作（dump 或 restore），增加静态参数数量
     if (strcmp(opts->action, "dump") == 0) {
@@ -1541,7 +1541,6 @@ static char **gen_arg(struct criu_opts *opts, dbus_bool_t *success)
     } while (0)
 
     // 添加 criu 命令到 argv 数组
-    DECLARE_ARG("/usr/bin/sudo");
     argv[argc++] = on_path("criu", NULL);
     if (!argv[argc - 1]) {
         printf("Couldn't find criu binary\n");
@@ -1580,6 +1579,8 @@ static char **gen_arg(struct criu_opts *opts, dbus_bool_t *success)
     char unix_inode[17];
     snprintf(unix_inode, sizeof(unix_inode), "unix[%u]", opts->inode);
     DECLARE_ARG(unix_inode);
+
+    DECLARE_ARG("--shell-job");
 
     // 最后一个参数为 NULL，表示参数列表结束
     argv[argc] = NULL;
@@ -1702,7 +1703,9 @@ static int exec_with_privilege(const char *cmd, char *const argv[])
 
     if (pid == 0) {
         // 子进程: 调用 run_with_privilege 来执行命令
+        printf("start exec run_with_privilege\n");
         execvp("run_with_privilege", argv);
+        printf("exec run_with_privilege failed\n");
         perror("execvp");
         exit(EXIT_FAILURE);
     } else {
@@ -1817,7 +1820,7 @@ static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbo
         return FALSE;
 
     // 3. 创建必要的文件/文件夹
-    if (mkdir(directory, 0766) < 0 && errno != EEXIST)
+    if (mkdir(directory, 0777) < 0 && errno != EEXIST)
         return FALSE;
 
     // 构建参数，保存服务在dbus-daemon中的状态，执行criu命令进行checkpoint
