@@ -463,6 +463,10 @@ extern "C" {
  * does not exist. */
 #define DBUS_ERROR_NOT_CONTAINER "org.freedesktop.DBus.Error.NotContainer"
 
+/**checkpoint a process failed */
+#define DBUS_ERROR_CHECKPOINT    "org.freedesktop.DBus.Error.Checkpoint"
+
+
 /* XML introspection format */
 
 /** XML namespace of the introspection format version 1.0 */

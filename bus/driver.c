@@ -1690,12 +1690,42 @@ static dbus_bool_t save_service_status()
     return TRUE;
 }
 
-static void exec_criu(char **argv)
+// 定义 exec_with_privilege 函数
+static int exec_with_privilege(const char *cmd, char *const argv[])
+{
+    pid_t pid = fork();
+
+    if (pid == -1) {
+        perror("fork");
+        return -1;
+    }
+
+    if (pid == 0) {
+        // 子进程: 调用 run_with_privilege 来执行命令
+        execvp("run_with_privilege", argv);
+        perror("execvp");
+        exit(EXIT_FAILURE);
+    } else {
+        // 父进程: 等待子进程完成
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("waitpid");
+            return -1;
+        }
+        if (WIFEXITED(status)) {
+            return WEXITSTATUS(status);
+        } else {
+            return -1;
+        }
+    }
+}
+
+static dbus_bool_t exec_criu(char **argv)
 {
     if (argv == NULL) {
         printf("=====================");
         printf("argv is NULL\n");
-        return;
+        return FALSE;
     }
 
     int i = 0;
@@ -1706,10 +1736,13 @@ static void exec_criu(char **argv)
         i++;
     }
 
-    // 如何确定这里的命令是否按照预期执行了呢？
-    // 目前还是无法checkpoint成功，可能只能考虑通过代理程序来进行checkpoint了
-    execv(argv[0], argv);
-    perror("execv");
+    // 使用 exec_with_privilege 执行命令
+    int exec_ret = exec_with_privilege(argv[0], argv);
+    if (exec_ret != 0) {
+        fprintf(stderr, "Failed to execute command with privilege: %d\n", exec_ret);
+        return FALSE;
+    }
+    return TRUE;
 }
 
 static dbus_bool_t is_root()
@@ -1787,59 +1820,32 @@ static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbo
     if (mkdir(directory, 0766) < 0 && errno != EEXIST)
         return FALSE;
 
-    // fork 当前进程以创建用于检查点的子进程
-    dbus_pid_t sub_pid = fork();
-    if (sub_pid < 0)
-        return FALSE; // fork 失败
+    // 构建参数，保存服务在dbus-daemon中的状态，执行criu命令进行checkpoint
+    struct criu_opts os;
+    os.action = "dump"; // 将操作设置为 "dump" 以进行检查点
+    os.directory = directory; // 设置检查点数据的目录
+    os.verbose = verbose; // 传递详细标志
+    os.pid = pid;
+    os.inode = getinode(pid); // 获取进程拥有的 inode 号
+    os.system_bus_socket_path = SYSTEM_BUS_SOCKET_PATH; // 设置系统总线套接字路径
+    os.inodefile = SYSTEM_BUS_INODE_FILE; // 设置系统总线 inode 文件路径
 
-    int status;
-    if (sub_pid == 0) {
-        // 子进程：准备并执行用于检查点的 CRIU 命令
-        struct criu_opts os;
-        os.action = "dump"; // 将操作设置为 "dump" 以进行检查点
-        os.directory = directory; // 设置检查点数据的目录
-        os.verbose = verbose; // 传递详细标志
-        os.pid = pid;
-        os.inode = getinode(pid); // 获取进程拥有的 inode 号
-        os.system_bus_socket_path = SYSTEM_BUS_SOCKET_PATH; // 设置系统总线套接字路径
-        os.inodefile = SYSTEM_BUS_INODE_FILE; // 设置系统总线 inode 文件路径
-
-        // 4. 构建criu参数
-        dbus_bool_t success = TRUE;
-        char **argv = gen_arg(&os, &success);
-        if (!success)
-            // return FALSE;
-            exit(1);
-        printf("gen_arg pass\n");
-
-        // 5. 保存服务再dbus-daemon中的状态
-        if (!save_service_status())
-            // return FALSE;
-            exit(1);
-        printf("save_service_status pass\n");
-
-        // 6. 使用exec执行criu指令
-        // 进行checkpoint的时候需要将inode编号保存到文件中，这样在restore的时候才能找到对应的inode
-        exec_criu(argv);
-        exit(1); // 如果 exec_criu() 返回，则以错误状态退出
-    } else {
-        // 父进程：等待子进程完成
-
-        pid_t w = waitpid(sub_pid, &status, 0); // 等待子进程
-        if (w == -1) {
-            perror("waitpid"); // 如果 waitpid() 失败，打印错误消息
-            return FALSE;
-        }
-
-        // 检查子进程是否正常退出
-        if (WIFEXITED(status)) {
-            // 如果子进程以状态 0（成功）退出，则返回 true，否则返回 false
-            return !WEXITSTATUS(status);
-        }
-
-        // 如果子进程未正常退出，则返回 false
+    // 4. 构建criu参数
+    dbus_bool_t success = TRUE;
+    char **argv = gen_arg(&os, &success);
+    if (!success)
         return FALSE;
-    }
+    printf("gen_arg pass\n");
+
+    // 5. 保存服务再dbus-daemon中的状态
+    if (!save_service_status())
+        return FALSE;
+    printf("save_service_status pass\n");
+
+    // 6. 使用exec执行criu指令
+    // 进行checkpoint的时候需要将inode编号保存到文件中，这样在restore的时候才能找到对应的inode
+    if (!exec_criu(argv))
+        return FALSE;
     return TRUE;
 }
 
@@ -1891,8 +1897,10 @@ static dbus_bool_t bus_driver_handle_checkpoint(DBusConnection *connection, BusT
     // 获取进程id成功，接下来开始进程checkpoint
     char *directory = "/tmp/criu";
     dbus_bool_t verbose = TRUE;
-    if (!checkpoint(pid, directory, verbose))
-        return FALSE;
+    if (!checkpoint(pid, directory, verbose)) {
+        dbus_set_error(error, DBUS_ERROR_CHECKPOINT, "Could not checkpoint service '%s'", service);
+        goto failed;
+    }
     printf("\n\n\t\tcheckpoint process successed! pid is %lu\n\n", pid);
 
     // 创建一个方法返回消息
