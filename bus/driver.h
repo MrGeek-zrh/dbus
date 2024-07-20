@@ -40,7 +40,7 @@ struct criu_opts {
     /* The type of criu invocation, one of "dump" or "restore" */
     const char *action;
 
-    /* The directory to pass to criu */
+    // criu dump 得到的镜像文件所在的路径
     char *directory;
 
     /* Enable criu verbose mode? */
@@ -55,11 +55,14 @@ struct criu_opts {
     // 默认应该是/run/dbus/system_bus_socket
     char * system_bus_socket_path;
 
-    /* restore: the file to write the inode */
+    /* the file to write the inode ,这个路径在restore的时候会用到 */
     char *inodefile;
     // TODO:
     const char *cgroup_path;
 };
+
+// TODO: 
+// dbus中有一个类似于service status的结构体吗？没有的话，我可能需要自己创建一个，然后把服务的状态信息都放在这里，然后写入到json文件中保存，需要恢复的时候，直接读取就行
 
 void bus_driver_remove_connection(DBusConnection *connection);
 dbus_bool_t bus_driver_handle_message(DBusConnection *connection, BusTransaction *transaction, DBusMessage *message,
