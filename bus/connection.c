@@ -54,31 +54,63 @@ typedef struct {
 
 } BusPendingReply;
 
+// 一个BusConnection对应一个与客户端的连接？
+//管理所有与 D-Bus 守护进程相关的连接
 struct BusConnections {
     int refcount;
-    DBusList *completed; /**< List of all completed connections */
-    int n_completed; /**< Length of completed list */
-    DBusList *incomplete; /**< List of all not-yet-active connections */
-    int n_incomplete; /**< Length of incomplete list */
-    BusContext *context;
-    DBusHashTable *completed_by_user; /**< Number of completed connections for each UID */
-    DBusTimeout *expire_timeout; /**< Timeout for expiring incomplete connections. */
-    int stamp; /**< Incrementing number */
-    BusExpireList *pending_replies; /**< List of pending replies */
+    /**< 引用计数，用于管理该结构的内存生命周期 */
 
-    /** List of all monitoring connections, a subset of completed.
-   * Each member is a #DBusConnection. */
+    DBusList *completed;
+    /**< 所有已完成连接的列表 */
+
+    int n_completed;
+    /**< 已完成连接列表的长度 */
+
+    DBusList *incomplete;
+    /**< 所有未激活连接的列表 */
+
+    int n_incomplete;
+    /**< 未激活连接列表的长度 */
+
+    BusContext *context;
+    /**< 关联的上下文信息 */
+
+    DBusHashTable *completed_by_user;
+    /**< 每个用户 ID 对应的已完成连接数 */
+
+    DBusTimeout *expire_timeout;
+    /**< 用于处理未激活连接的超时 */
+
+    int stamp;
+    /**< 递增的编号，用于标识或跟踪状态 */
+
+    BusExpireList *pending_replies;
+    /**< 等待回复的列表 */
+
     DBusList *monitors;
+    /**< 监控连接的列表，是已完成连接的子集，每个成员都是一个 #DBusConnection */
+
     BusMatchmaker *monitor_matchmaker;
+    /**< 用于监控的匹配器 */
 
 #ifdef DBUS_ENABLE_STATS
     int total_match_rules;
+    /**< 匹配规则的总数 */
+
     int peak_match_rules;
+    /**< 匹配规则的峰值数量 */
+
     int peak_match_rules_per_conn;
+    /**< 每个连接的匹配规则峰值数量 */
 
     int total_bus_names;
+    /**< 总线名称的总数 */
+
     int peak_bus_names;
+    /**< 总线名称的峰值数量 */
+
     int peak_bus_names_per_conn;
+    /**< 每个连接的总线名称峰值数量 */
 #endif
 };
 

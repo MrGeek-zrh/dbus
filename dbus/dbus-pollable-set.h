@@ -37,6 +37,7 @@ typedef struct {
 } DBusPollableEvent;
 
 // DBusPollableSetClass 和 DBusPollableSet 结构体定义了一个用于管理和监视多个文件描述符的抽象接口。这些结构体使得可以通过定义一组函数指针来实现不同的底层机制（如 poll、epoll、kqueue 等），从而实现对多个文件描述符的高效管理。
+// 一个DbusPollableSet可以对应一个epoll实例,管理了很多的DbusPollable fd
 typedef struct DBusPollableSet DBusPollableSet;
 
 // DBusPollableSetClass 结构体包含了一组函数指针，用于定义操作 DBusPollableSet 对象的方法。

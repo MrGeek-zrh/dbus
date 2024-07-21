@@ -79,15 +79,25 @@ static dbus_int32_t container_creator_data_slot = -1;
  * Singleton data structure encapsulating the container-related parts of
  * a BusContext.
  */
+/**
+ * @brief BusContainers 结构体
+ * 
+ * 该结构体用于管理与 D-Bus 总线相关的容器信息。
+ * 它包含了对容器实例的引用计数、路径映射、用户容器数量等信息。
+ */
 struct BusContainers {
-    int refcount;
+    int refcount;  /**< 引用计数器，表示该结构体的引用次数。当引用计数为0时，结构体将被销毁 */
+
     /* path borrowed from BusContainerInstance => unowned BusContainerInstance
-   * The BusContainerInstance removes itself from here on destruction. */
-    DBusHashTable *instances_by_path;
+     * The BusContainerInstance removes itself from here on destruction. */
+    DBusHashTable *instances_by_path; /**< 存储容器实例路径的哈希表。当容器实例销毁时，它会从该表中移除自身。此路径是从 BusContainerInstance 借用的，不拥有 BusContainerInstance */
+
     /* uid => (void *) (uintptr_t) number of containers */
-    DBusHashTable *n_containers_by_user;
-    DBusString address_template;
-    dbus_uint64_t next_container_id;
+    DBusHashTable *n_containers_by_user; /**< 用户ID到容器数量的映射表。键是用户ID，值是该用户拥有的容器数量 */
+
+    DBusString address_template; /**< 地址模板字符串，用于生成容器实例的地址 */
+
+    dbus_uint64_t next_container_id; /**< 下一个容器的唯一ID，用于分配新的容器ID */
 };
 
 /* Data slot on DBusConnection, holding BusContainerInstance */

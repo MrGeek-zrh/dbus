@@ -231,7 +231,20 @@ static void check_two_pid_descriptors(const DBusString *pid_fd, const char *extr
 }
 
 #ifdef DBUS_UNIX
-// 什么时候触发这个函数?
+// 这个函数有啥作用?
+// 为啥叫reload?
+// 用于处理sudo systemctl daemon-reload ?
+/**
+ * @brief 处理重新加载监视器的回调函数
+ * 
+ * 此函数是一个回调函数，用于处理与重新加载相关的事件。
+ * 它读取重新加载管道中的数据并执行相应的操作，如重新加载配置或退出。
+ * 
+ * @param watch 指向 DBusWatch 的指针
+ * @param flags 标志，用于指定事件类型
+ * @param data 用户数据指针
+ * @return dbus_bool_t 成功返回 TRUE，失败返回 FALSE
+ */
 static dbus_bool_t handle_reload_watch(DBusWatch *watch, unsigned int flags, void *data)
 {
     DBusError error;
@@ -239,29 +252,31 @@ static dbus_bool_t handle_reload_watch(DBusWatch *watch, unsigned int flags, voi
     char *action_str;
     char action = '\0';
 
+    // 初始化 DBusString，处理内存不足的情况
     while (!_dbus_string_init(&str))
         _dbus_wait_for_memory();
 
+    // 检查重新加载管道是否可读，并尝试读取一个字符
     if ((reload_pipe[RELOAD_READ_END].fd > 0) && _dbus_read_socket(reload_pipe[RELOAD_READ_END], &str, 1) != 1) {
         _dbus_warn("Couldn't read from reload pipe.");
         close_reload_pipe(&watch);
         return TRUE;
     }
 
+    // 获取读取到的字符
     action_str = _dbus_string_get_data(&str);
     if (action_str != NULL) {
         action = action_str[0];
     }
     _dbus_string_free(&str);
 
-    /* this can only fail if we don't understand the config file
-   * or OOM.  Either way we should just stick with the currently
-   * loaded config.
-   */
+    // 初始化 DBusError 以捕获错误信息
     dbus_error_init(&error);
 
+    // 根据读取到的字符执行相应的操作
     switch (action) {
         case ACTION_RELOAD:
+            // 处理重新加载配置的操作
             if (!bus_context_reload_config(context, &error)) {
                 _DBUS_ASSERT_ERROR_IS_SET(&error);
                 _dbus_assert(dbus_error_has_name(&error, DBUS_ERROR_FAILED) ||
@@ -273,12 +288,7 @@ static dbus_bool_t handle_reload_watch(DBusWatch *watch, unsigned int flags, voi
 
         case ACTION_QUIT: {
             DBusLoop *loop;
-            /*
-         * On OSs without abstract sockets, we want to quit
-         * gracefully rather than being killed by SIGTERM,
-         * so that DBusServer gets a chance to clean up the
-         * sockets from the filesystem. fd.o #38656
-         */
+            // 处理退出操作，确保在某些操作系统上能够优雅地退出
             loop = bus_context_get_loop(context);
             if (loop != NULL) {
                 _dbus_daemon_report_stopping();
@@ -287,6 +297,7 @@ static dbus_bool_t handle_reload_watch(DBusWatch *watch, unsigned int flags, voi
         } break;
 
         default:
+            // 处理未知的操作符
             break;
     }
 
@@ -308,6 +319,7 @@ static void setup_reload_pipe(DBusLoop *loop)
 
     // 创建一个双向管道（socketpair），用于在不同进程之间进行通信
     // 如果创建失败，则打印警告信息并退出程序
+    // 一个读端，一个写端
     if (!_dbus_socketpair(&reload_pipe[0], &reload_pipe[1], TRUE, &error)) {
         _dbus_warn("Unable to create reload pipe: %s", error.message);
         dbus_error_free(&error);
@@ -316,6 +328,7 @@ static void setup_reload_pipe(DBusLoop *loop)
 
     // 创建一个新的 DBusWatch 对象，用于监视管道的读端是否可读
     // 当管道的读端有数据可读时，将调用 handle_reload_watch 函数进行处理
+    // TODO: 写端是谁持有呢？
     watch = _dbus_watch_new(_dbus_socket_get_pollable(reload_pipe[RELOAD_READ_END]), DBUS_WATCH_READABLE, TRUE,
                             handle_reload_watch, NULL, NULL);
 
@@ -371,7 +384,6 @@ int main(int argc, char **argv)
 #ifdef DBUS_UNIX
     const char *error_str;
 
-    // TODO
     // 这里把标准输出重定向到了系统的journal文件系统中，通过journalctl -u dbus 命令可以查看日志，不知道是怎么实现的。
     if (!_dbus_ensure_standard_fds(DBUS_FORCE_STDIN_NULL, &error_str)) {
         fprintf(stderr, "dbus-daemon: fatal error setting up standard fds: %s: %s\n", error_str, _dbus_strerror(errno));
@@ -379,6 +391,7 @@ int main(int argc, char **argv)
     }
 
     // 设置所有文件描述符为 close-on-exec,防止继承不需要的文件描述符
+    // TODO
     _dbus_fd_set_all_close_on_exec();
 #endif
     ready_event_handle = NULL;
@@ -612,11 +625,15 @@ int main(int argc, char **argv)
     // bus_context_new() 会关闭 print_addr_pipe 和 print_pid_pipe
 
 #ifdef DBUS_UNIX
-    // 在 Unix 系统上,设置信号处理器
-    // 这个信号处理函数的作用是啥？
     setup_reload_pipe(bus_context_get_loop(context));
 
+    // 在 Unix 系统上,设置信号处理器
+    // 这个信号处理函数的作用是啥？
+    // SIGTERM - 终止信号，通常用于请求程序优雅地退出
+    // signal_handler - 处理 SIGTERM 信号的函数指针
     _dbus_set_signal_handler(SIGTERM, signal_handler);
+    // SIGHUP - 挂起信号，通常用于重新加载配置文件或重新初始化
+    // signal_handler - 处理 SIGHUP 信号的函数指针
     _dbus_set_signal_handler(SIGHUP, signal_handler);
 #endif /* DBUS_UNIX */
 

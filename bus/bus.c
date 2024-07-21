@@ -707,6 +707,9 @@ static dbus_bool_t process_config_postinit(BusContext *context, BusConfigParser 
 }
 
 /* Takes ownership of print_addr_pipe fds, print_pid_pipe fds and ready_event_handle */
+/**     context = bus_context_new(&config_file, flags, &print_addr_pipe, &print_pid_pipe, ready_event_handle,
+                              _dbus_string_get_length(&address) > 0 ? &address : NULL, &error);
+*/
 BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags, DBusPipe *print_addr_pipe,
                             DBusPipe *print_pid_pipe, void *ready_event_handle, const DBusString *address,
                             DBusError *error)

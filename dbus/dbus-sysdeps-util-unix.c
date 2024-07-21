@@ -1362,9 +1362,16 @@ void _dbus_daemon_report_reloaded(void)
  * Report to a service manager that the daemon calling this function is
  * shutting down. This is currently only implemented for systemd.
  */
+/**
+ * @brief 向服务管理器报告守护进程正在关闭
+ * 
+ * 此函数用于向服务管理器报告调用此函数的守护进程正在关闭。
+ * 目前，该功能仅在 systemd 上实现。
+ */
 void _dbus_daemon_report_stopping(void)
 {
 #ifdef HAVE_SYSTEMD
+    // 向 systemd 发送通知，表示守护进程正在关闭
     sd_notify(0, "STOPPING=1");
 #endif
 }

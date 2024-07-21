@@ -52,121 +52,97 @@ static DBusMemPool *list_pool;
 /* the mem pool is probably a speed hit, with the thread
  * lock, though it does still save memory - unknown.
  */
-static DBusList*
-alloc_link (void *data)
+static DBusList *alloc_link(void *data)
 {
-  DBusList *link;
+    DBusList *link;
 
-  if (!_DBUS_LOCK (list))
-    return FALSE;
+    if (!_DBUS_LOCK(list))
+        return FALSE;
 
-  if (list_pool == NULL)
-    {      
-      list_pool = _dbus_mem_pool_new (sizeof (DBusList), TRUE);
+    if (list_pool == NULL) {
+        list_pool = _dbus_mem_pool_new(sizeof(DBusList), TRUE);
 
-      if (list_pool == NULL)
-        {
-          _DBUS_UNLOCK (list);
-          return NULL;
+        if (list_pool == NULL) {
+            _DBUS_UNLOCK(list);
+            return NULL;
         }
 
-      link = _dbus_mem_pool_alloc (list_pool);
-      if (link == NULL)
-        {
-          _dbus_mem_pool_free (list_pool);
-          list_pool = NULL;
-          _DBUS_UNLOCK (list);
-          return NULL;
+        link = _dbus_mem_pool_alloc(list_pool);
+        if (link == NULL) {
+            _dbus_mem_pool_free(list_pool);
+            list_pool = NULL;
+            _DBUS_UNLOCK(list);
+            return NULL;
         }
-    }
-  else
-    {
-      link = _dbus_mem_pool_alloc (list_pool);
+    } else {
+        link = _dbus_mem_pool_alloc(list_pool);
     }
 
-  if (link)
-    link->data = data;
-  
-  _DBUS_UNLOCK (list);
+    if (link)
+        link->data = data;
 
-  return link;
+    _DBUS_UNLOCK(list);
+
+    return link;
 }
 
-static void
-free_link (DBusList *link)
-{  
-  if (!_DBUS_LOCK (list))
-    _dbus_assert_not_reached ("we should have initialized global locks "
-        "before we allocated a linked-list link");
-
-  if (_dbus_mem_pool_dealloc (list_pool, link))
-    {
-      _dbus_mem_pool_free (list_pool);
-      list_pool = NULL;
-    }
-  
-  _DBUS_UNLOCK (list);
-}
-
-static void
-link_before (DBusList **list,
-             DBusList  *before_this_link,
-             DBusList  *link)
+static void free_link(DBusList *link)
 {
-  if (*list == NULL)
-    {
-      link->prev = link;
-      link->next = link;
-      *list = link;
+    if (!_DBUS_LOCK(list))
+        _dbus_assert_not_reached("we should have initialized global locks "
+                                 "before we allocated a linked-list link");
+
+    if (_dbus_mem_pool_dealloc(list_pool, link)) {
+        _dbus_mem_pool_free(list_pool);
+        list_pool = NULL;
     }
-  else
-    {      
-      link->next = before_this_link;
-      link->prev = before_this_link->prev;
-      before_this_link->prev = link;
-      link->prev->next = link;
-      
-      if (before_this_link == *list)
+
+    _DBUS_UNLOCK(list);
+}
+
+static void link_before(DBusList **list, DBusList *before_this_link, DBusList *link)
+{
+    if (*list == NULL) {
+        link->prev = link;
+        link->next = link;
         *list = link;
+    } else {
+        link->next = before_this_link;
+        link->prev = before_this_link->prev;
+        before_this_link->prev = link;
+        link->prev->next = link;
+
+        if (before_this_link == *list)
+            *list = link;
     }
 }
 
-static void
-link_after (DBusList **list,
-            DBusList  *after_this_link,
-            DBusList  *link)
+static void link_after(DBusList **list, DBusList *after_this_link, DBusList *link)
 {
-  if (*list == NULL)
-    {
-      link->prev = link;
-      link->next = link;
-      *list = link;
-    }
-  else
-    {
-      link->prev = after_this_link;
-      link->next = after_this_link->next;
-      after_this_link->next = link;
-      link->next->prev = link;
+    if (*list == NULL) {
+        link->prev = link;
+        link->next = link;
+        *list = link;
+    } else {
+        link->prev = after_this_link;
+        link->next = after_this_link->next;
+        after_this_link->next = link;
+        link->next->prev = link;
     }
 }
 
 #ifdef DBUS_ENABLE_STATS
-void
-_dbus_list_get_stats     (dbus_uint32_t *in_use_p,
-                          dbus_uint32_t *in_free_list_p,
-                          dbus_uint32_t *allocated_p)
+void _dbus_list_get_stats(dbus_uint32_t *in_use_p, dbus_uint32_t *in_free_list_p, dbus_uint32_t *allocated_p)
 {
-  if (!_DBUS_LOCK (list))
-    {
-      *in_use_p = 0;
-      *in_free_list_p = 0;
-      *allocated_p = 0;
-      return;
+    if (!_DBUS_LOCK(list)) {
+        *in_use_p = 0;
+        *in_free_list_p = 0;
+        *allocated_p = 0;
+        return;
     }
 
-  _dbus_mem_pool_get_stats (list_pool, in_use_p, in_free_list_p, allocated_p);
-  _DBUS_UNLOCK (list);
+    _dbus_mem_pool_get_stats(list_pool, in_use_p, in_free_list_p, allocated_p);
+    _DBUS_UNLOCK(list);
 }
 #endif
 
@@ -239,10 +215,9 @@ _dbus_list_get_stats     (dbus_uint32_t *in_use_p,
  * @param data the value to store in the link.
  * @returns a newly allocated link.
  */
-DBusList*
-_dbus_list_alloc_link (void *data)
+DBusList *_dbus_list_alloc_link(void *data)
 {
-  return alloc_link (data);
+    return alloc_link(data);
 }
 
 /**
@@ -251,12 +226,10 @@ _dbus_list_alloc_link (void *data)
  *
  * @param link the list node
  */
-void
-_dbus_list_free_link (DBusList *link)
+void _dbus_list_free_link(DBusList *link)
 {
-  free_link (link);
+    free_link(link);
 }
-
 
 /**
  * Appends a value to the list. May return #FALSE
@@ -267,17 +240,15 @@ _dbus_list_free_link (DBusList *link)
  * @param data the value to append.
  * @returns #TRUE on success.
  */
-dbus_bool_t
-_dbus_list_append (DBusList **list,
-                   void      *data)
+dbus_bool_t _dbus_list_append(DBusList **list, void *data)
 {
-  if (!_dbus_list_prepend (list, data))
-    return FALSE;
+    if (!_dbus_list_prepend(list, data))
+        return FALSE;
 
-  /* Now cycle the list forward one so the prepended node is the tail */
-  *list = (*list)->next;
+    /* Now cycle the list forward one so the prepended node is the tail */
+    *list = (*list)->next;
 
-  return TRUE;
+    return TRUE;
 }
 
 /**
@@ -289,19 +260,17 @@ _dbus_list_append (DBusList **list,
  * @param data the value to prepend.
  * @returns #TRUE on success.
  */
-dbus_bool_t
-_dbus_list_prepend (DBusList **list,
-                    void      *data)
+dbus_bool_t _dbus_list_prepend(DBusList **list, void *data)
 {
-  DBusList *link;
+    DBusList *link;
 
-  link = alloc_link (data);
-  if (link == NULL)
-    return FALSE;
+    link = alloc_link(data);
+    if (link == NULL)
+        return FALSE;
 
-  link_before (list, *list, link);
+    link_before(list, *list, link);
 
-  return TRUE;
+    return TRUE;
 }
 
 /**
@@ -312,14 +281,12 @@ _dbus_list_prepend (DBusList **list,
  * @param list address of the list head.
  * @param link the link to append.
  */
-void
-_dbus_list_append_link (DBusList **list,
-			DBusList *link)
+void _dbus_list_append_link(DBusList **list, DBusList *link)
 {
-  _dbus_list_prepend_link (list, link);
+    _dbus_list_prepend_link(list, link);
 
-  /* Now cycle the list forward one so the prepended node is the tail */
-  *list = (*list)->next;
+    /* Now cycle the list forward one so the prepended node is the tail */
+    *list = (*list)->next;
 }
 
 /**
@@ -330,11 +297,9 @@ _dbus_list_append_link (DBusList **list,
  * @param list address of the list head.
  * @param link the link to prepend.
  */
-void
-_dbus_list_prepend_link (DBusList **list,
-			 DBusList *link)
+void _dbus_list_prepend_link(DBusList **list, DBusList *link)
 {
-  link_before (list, *list, link);
+    link_before(list, *list, link);
 }
 
 /**
@@ -345,25 +310,21 @@ _dbus_list_prepend_link (DBusList **list,
  * @param data the value to insert
  * @returns #TRUE on success, #FALSE if memory allocation fails
  */
-dbus_bool_t
-_dbus_list_insert_after (DBusList **list,
-                         DBusList  *after_this_link,
-                         void      *data)
+dbus_bool_t _dbus_list_insert_after(DBusList **list, DBusList *after_this_link, void *data)
 {
-  DBusList *link;  
+    DBusList *link;
 
-  if (after_this_link == NULL)
-    return _dbus_list_prepend (list, data);
-  else
-    {
-      link = alloc_link (data);
-      if (link == NULL)
-        return FALSE;
-  
-      link_after (list, after_this_link, link);
+    if (after_this_link == NULL)
+        return _dbus_list_prepend(list, data);
+    else {
+        link = alloc_link(data);
+        if (link == NULL)
+            return FALSE;
+
+        link_after(list, after_this_link, link);
     }
-  
-  return TRUE;
+
+    return TRUE;
 }
 
 /**
@@ -373,15 +334,12 @@ _dbus_list_insert_after (DBusList **list,
  * @param before_this_link existing link to insert before, or #NULL to append
  * @param link the link to insert
  */
-void
-_dbus_list_insert_before_link (DBusList **list,
-                               DBusList  *before_this_link,
-                               DBusList  *link)
+void _dbus_list_insert_before_link(DBusList **list, DBusList *before_this_link, DBusList *link)
 {
-  if (before_this_link == NULL)
-    _dbus_list_append_link (list, link);
-  else
-    link_before (list, before_this_link, link);
+    if (before_this_link == NULL)
+        _dbus_list_append_link(list, link);
+    else
+        link_before(list, before_this_link, link);
 }
 
 /**
@@ -391,15 +349,12 @@ _dbus_list_insert_before_link (DBusList **list,
  * @param after_this_link existing link to insert after, or #NULL to prepend
  * @param link the link to insert
  */
-void
-_dbus_list_insert_after_link (DBusList **list,
-                              DBusList  *after_this_link,
-                              DBusList  *link)
+void _dbus_list_insert_after_link(DBusList **list, DBusList *after_this_link, DBusList *link)
 {
-  if (after_this_link == NULL)
-    _dbus_list_prepend_link (list, link);
-  else  
-    link_after (list, after_this_link, link);
+    if (after_this_link == NULL)
+        _dbus_list_prepend_link(list, link);
+    else
+        link_after(list, after_this_link, link);
 }
 
 /**
@@ -412,25 +367,21 @@ _dbus_list_insert_after_link (DBusList **list,
  * @param data the value to remove.
  * @returns #TRUE if a value was found to remove.
  */
-dbus_bool_t
-_dbus_list_remove (DBusList **list,
-                   void      *data)
+dbus_bool_t _dbus_list_remove(DBusList **list, void *data)
 {
-  DBusList *link;
+    DBusList *link;
 
-  link = *list;
-  while (link != NULL)
-    {
-      if (link->data == data)
-        {
-          _dbus_list_remove_link (list, link);
-          return TRUE;
+    link = *list;
+    while (link != NULL) {
+        if (link->data == data) {
+            _dbus_list_remove_link(list, link);
+            return TRUE;
         }
-      
-      link = _dbus_list_get_next_link (list, link);
+
+        link = _dbus_list_get_next_link(list, link);
     }
 
-  return FALSE;
+    return FALSE;
 }
 
 /**
@@ -443,20 +394,16 @@ _dbus_list_remove (DBusList **list,
  * @param data the value to remove.
  * @returns #TRUE if a value was found to remove.
  */
-dbus_bool_t
-_dbus_list_remove_last (DBusList **list,
-                        void      *data)
+dbus_bool_t _dbus_list_remove_last(DBusList **list, void *data)
 {
-  DBusList *link;
+    DBusList *link;
 
-  link = _dbus_list_find_last (list, data);
-  if (link)
-    {
-      _dbus_list_remove_link (list, link);
-      return TRUE;
-    }
-  else
-    return FALSE;
+    link = _dbus_list_find_last(list, data);
+    if (link) {
+        _dbus_list_remove_link(list, link);
+        return TRUE;
+    } else
+        return FALSE;
 }
 
 /**
@@ -469,23 +416,20 @@ _dbus_list_remove_last (DBusList **list,
  * @param data the value to find.
  * @returns the link if found
  */
-DBusList*
-_dbus_list_find_last (DBusList **list,
-                      void      *data)
+DBusList *_dbus_list_find_last(DBusList **list, void *data)
 {
-  DBusList *link;
+    DBusList *link;
 
-  link = _dbus_list_get_last_link (list);
+    link = _dbus_list_get_last_link(list);
 
-  while (link != NULL)
-    {
-      if (link->data == data)
-        return link;
-      
-      link = _dbus_list_get_prev_link (list, link);
+    while (link != NULL) {
+        if (link->data == data)
+            return link;
+
+        link = _dbus_list_get_prev_link(list, link);
     }
 
-  return NULL;
+    return NULL;
 }
 
 /**
@@ -496,26 +440,21 @@ _dbus_list_find_last (DBusList **list,
  * @param list the list
  * @param link the link in the list
  */
-void
-_dbus_list_unlink (DBusList **list,
-                   DBusList  *link)
+void _dbus_list_unlink(DBusList **list, DBusList *link)
 {
-  if (link->next == link)
-    {
-      /* one-element list */
-      *list = NULL;
-    }
-  else
-    {      
-      link->prev->next = link->next;
-      link->next->prev = link->prev;
-      
-      if (*list == link)
-        *list = link->next;
+    if (link->next == link) {
+        /* one-element list */
+        *list = NULL;
+    } else {
+        link->prev->next = link->next;
+        link->next->prev = link->prev;
+
+        if (*list == link)
+            *list = link->next;
     }
 
-  link->next = NULL;
-  link->prev = NULL;
+    link->next = NULL;
+    link->prev = NULL;
 }
 
 /**
@@ -524,12 +463,10 @@ _dbus_list_unlink (DBusList **list,
  * @param list address of the list head.
  * @param link the list link to remove.
  */
-void
-_dbus_list_remove_link (DBusList **list,
-                        DBusList  *link)
+void _dbus_list_remove_link(DBusList **list, DBusList *link)
 {
-  _dbus_list_unlink (list, link);
-  free_link (link);
+    _dbus_list_unlink(list, link);
+    free_link(link);
 }
 
 /**
@@ -539,22 +476,20 @@ _dbus_list_remove_link (DBusList **list,
  *
  * @param list address of the list head.
  */
-void
-_dbus_list_clear (DBusList **list)
+void _dbus_list_clear(DBusList **list)
 {
-  DBusList *link;
+    DBusList *link;
 
-  link = *list;
-  while (link != NULL)
-    {
-      DBusList *next = _dbus_list_get_next_link (list, link);
-      
-      free_link (link);
-      
-      link = next;
+    link = *list;
+    while (link != NULL) {
+        DBusList *next = _dbus_list_get_next_link(list, link);
+
+        free_link(link);
+
+        link = next;
     }
 
-  *list = NULL;
+    *list = NULL;
 }
 
 /**
@@ -564,24 +499,21 @@ _dbus_list_clear (DBusList **list)
  * @param function free-function to call for each element.
  *
  */
-void
-_dbus_list_clear_full (DBusList         **list,
-                       DBusFreeFunction   function)
+void _dbus_list_clear_full(DBusList **list, DBusFreeFunction function)
 {
-  DBusList *link;
+    DBusList *link;
 
-  link = *list;
-  while (link != NULL)
-    {
-      DBusList *next = _dbus_list_get_next_link (list, link);
+    link = *list;
+    while (link != NULL) {
+        DBusList *next = _dbus_list_get_next_link(list, link);
 
-      function (link->data);
-      free_link (link);
+        function(link->data);
+        free_link(link);
 
-      link = next;
+        link = next;
     }
 
-  *list = NULL;
+    *list = NULL;
 }
 
 /**
@@ -591,10 +523,9 @@ _dbus_list_clear_full (DBusList         **list,
  * @param list address of the list head.
  * @returns the first link, or #NULL for an empty list.
  */
-DBusList*
-_dbus_list_get_first_link (DBusList **list)
+DBusList *_dbus_list_get_first_link(DBusList **list)
 {
-  return *list;
+    return *list;
 }
 
 /**
@@ -604,13 +535,12 @@ _dbus_list_get_first_link (DBusList **list)
  * @param list address of the list head.
  * @returns the last link, or #NULL for an empty list.
  */
-DBusList*
-_dbus_list_get_last_link (DBusList **list)
+DBusList *_dbus_list_get_last_link(DBusList **list)
 {
-  if (*list == NULL)
-    return NULL;
-  else
-    return (*list)->prev;
+    if (*list == NULL)
+        return NULL;
+    else
+        return (*list)->prev;
 }
 
 /**
@@ -620,13 +550,12 @@ _dbus_list_get_last_link (DBusList **list)
  * @param list address of the list head.
  * @returns the last data in the list, or #NULL for an empty list.
  */
-void*
-_dbus_list_get_last (DBusList **list)
+void *_dbus_list_get_last(DBusList **list)
 {
-  if (*list == NULL)
-    return NULL;
-  else
-    return (*list)->prev->data;
+    if (*list == NULL)
+        return NULL;
+    else
+        return (*list)->prev->data;
 }
 
 /**
@@ -636,13 +565,12 @@ _dbus_list_get_last (DBusList **list)
  * @param list address of the list head.
  * @returns the first data in the list, or #NULL for an empty list.
  */
-void*
-_dbus_list_get_first (DBusList **list)
+void *_dbus_list_get_first(DBusList **list)
 {
-  if (*list == NULL)
-    return NULL;
-  else
-    return (*list)->data;
+    if (*list == NULL)
+        return NULL;
+    else
+        return (*list)->data;
 }
 
 /**
@@ -652,18 +580,17 @@ _dbus_list_get_first (DBusList **list)
  * @param list address of the list head.
  * @returns the first link in the list, or #NULL for an empty list.
  */
-DBusList*
-_dbus_list_pop_first_link (DBusList **list)
+DBusList *_dbus_list_pop_first_link(DBusList **list)
 {
-  DBusList *link;
-  
-  link = _dbus_list_get_first_link (list);
-  if (link == NULL)
-    return NULL;
+    DBusList *link;
 
-  _dbus_list_unlink (list, link);
+    link = _dbus_list_get_first_link(list);
+    if (link == NULL)
+        return NULL;
 
-  return link;
+    _dbus_list_unlink(list, link);
+
+    return link;
 }
 
 /**
@@ -673,20 +600,19 @@ _dbus_list_pop_first_link (DBusList **list)
  * @param list address of the list head.
  * @returns the first data in the list, or #NULL for an empty list.
  */
-void*
-_dbus_list_pop_first (DBusList **list)
+void *_dbus_list_pop_first(DBusList **list)
 {
-  DBusList *link;
-  void *data;
-  
-  link = _dbus_list_get_first_link (list);
-  if (link == NULL)
-    return NULL;
-  
-  data = link->data;
-  _dbus_list_remove_link (list, link);
+    DBusList *link;
+    void *data;
 
-  return data;
+    link = _dbus_list_get_first_link(list);
+    if (link == NULL)
+        return NULL;
+
+    data = link->data;
+    _dbus_list_remove_link(list, link);
+
+    return data;
 }
 
 /**
@@ -696,20 +622,19 @@ _dbus_list_pop_first (DBusList **list)
  * @param list address of the list head.
  * @returns the last data in the list, or #NULL for an empty list.
  */
-void*
-_dbus_list_pop_last (DBusList **list)
+void *_dbus_list_pop_last(DBusList **list)
 {
-  DBusList *link;
-  void *data;
-  
-  link = _dbus_list_get_last_link (list);
-  if (link == NULL)
-    return NULL;
-  
-  data = link->data;
-  _dbus_list_remove_link (list, link);
+    DBusList *link;
+    void *data;
 
-  return data;
+    link = _dbus_list_get_last_link(list);
+    if (link == NULL)
+        return NULL;
+
+    data = link->data;
+    _dbus_list_remove_link(list, link);
+
+    return data;
 }
 
 /**
@@ -721,30 +646,26 @@ _dbus_list_pop_last (DBusList **list)
  * @param dest address where the copied list should be placed.
  * @returns #TRUE on success, #FALSE if not enough memory.
  */
-dbus_bool_t
-_dbus_list_copy (DBusList **list,
-                 DBusList **dest)
+dbus_bool_t _dbus_list_copy(DBusList **list, DBusList **dest)
 {
-  DBusList *link;
+    DBusList *link;
 
-  _dbus_assert (list != dest);
+    _dbus_assert(list != dest);
 
-  *dest = NULL;
-  
-  link = *list;
-  while (link != NULL)
-    {
-      if (!_dbus_list_append (dest, link->data))
-        {
-          /* free what we have so far */
-          _dbus_list_clear (dest);
-          return FALSE;
+    *dest = NULL;
+
+    link = *list;
+    while (link != NULL) {
+        if (!_dbus_list_append(dest, link->data)) {
+            /* free what we have so far */
+            _dbus_list_clear(dest);
+            return FALSE;
         }
-      
-      link = _dbus_list_get_next_link (list, link);
+
+        link = _dbus_list_get_next_link(list, link);
     }
 
-  return TRUE;
+    return TRUE;
 }
 
 /**
@@ -754,23 +675,21 @@ _dbus_list_copy (DBusList **list,
  * @param list address of the head of the list
  * @returns number of elements in the list.
  */
-int
-_dbus_list_get_length (DBusList **list)
+int _dbus_list_get_length(DBusList **list)
 {
-  DBusList *link;
-  int length;
+    DBusList *link;
+    int length;
 
-  length = 0;
-  
-  link = *list;
-  while (link != NULL)
-    {
-      ++length;
-      
-      link = _dbus_list_get_next_link (list, link);
+    length = 0;
+
+    link = *list;
+    while (link != NULL) {
+        ++length;
+
+        link = _dbus_list_get_next_link(list, link);
     }
 
-  return length;
+    return length;
 }
 
 /**
@@ -783,21 +702,17 @@ _dbus_list_get_length (DBusList **list)
  * @param data extra data for the function.
  * 
  */
-void
-_dbus_list_foreach (DBusList          **list,
-                    DBusForeachFunction function,
-                    void               *data)
+void _dbus_list_foreach(DBusList **list, DBusForeachFunction function, void *data)
 {
-  DBusList *link;
+    DBusList *link;
 
-  link = *list;
-  while (link != NULL)
-    {
-      DBusList *next = _dbus_list_get_next_link (list, link);
-      
-      (* function) (link->data, data);
-      
-      link = next;
+    link = *list;
+    while (link != NULL) {
+        DBusList *next = _dbus_list_get_next_link(list, link);
+
+        (*function)(link->data, data);
+
+        link = next;
     }
 }
 
@@ -807,11 +722,9 @@ _dbus_list_foreach (DBusList          **list,
  * @param list the list
  * @returns #TRUE if length is exactly one
  */
-dbus_bool_t
-_dbus_list_length_is_one (DBusList **list)
+dbus_bool_t _dbus_list_length_is_one(DBusList **list)
 {
-  return (*list != NULL &&
-          (*list)->next == *list);
+    return (*list != NULL && (*list)->next == *list);
 }
 
 /** @} */

@@ -38,7 +38,7 @@
 struct DBusLoop {
     int refcount; // 引用计数
     /** DBusPollable => dbus_malloc'd DBusList ** of references to DBusWatch */
-    DBusHashTable *watches; // 哈希表,用于存储文件描述符及其关联的 DBusWatch 对象列表 TODO: key是什么
+    DBusHashTable *watches; // 哈希表,用于存储文件描述符及其关联的 DBusWatch 对象列表. key 上被监控的文件描述符，value是文件描述符对应的watches结构。为啥是watches结构呢？而不是watch呢？
     DBusPollableSet *pollable_set; // linux环境下，就可以理解成epoll_create1创建的epoll实例集合
     DBusList *timeouts; // 超时事件列表
     int callback_list_serial; // 回调列表的序列号,用于检测回调列表是否被修改
@@ -117,6 +117,7 @@ DBusLoop *_dbus_loop_new(void)
     loop->watches = _dbus_hash_table_new(DBUS_HASH_POLLABLE, NULL, free_watch_table_entry);
 
     // 创建一个 DBusPollableSet 对象,用于管理需要监视的文件描述符集合
+    // 一个epoll 实例对应一个DbusPollableSet实例，也就是一个epoll实例可以管理多个DbusPollable文件描述符
     loop->pollable_set = _dbus_pollable_set_new(0);
 
     // 如果创建哈希表或 DBusPollableSet 失败,则释放已分配的资源
@@ -166,24 +167,43 @@ void _dbus_loop_unref(DBusLoop *loop)
     }
 }
 
+/**
+ * ensure_watch_table_entry - 确保在给定的 DBusLoop 中为指定的 DBusPollable 文件描述符创建或查找一个表项。
+ * @loop: 指向 DBusLoop 结构的指针，该结构表示事件循环。
+ * @fd: 指定的 DBusPollable 文件描述符。
+ * 
+ * 该函数检查在事件循环的 watches 哈希表中是否存在与给定文件描述符相关联的表项。如果存在，则返回该表项的指针。
+ * 如果不存在，则创建一个新的表项，插入到哈希表中，并返回新创建的表项的指针。如果内存分配失败或插入哈希表失败，
+ * 则返回 NULL。
+ * 
+ * 返回值:
+ * 返回指向 DBusList 指针的指针，表示与给定文件描述符相关联的表项。如果分配或插入失败，返回 NULL。
+ */
 static DBusList **ensure_watch_table_entry(DBusLoop *loop, DBusPollable fd)
 {
     DBusList **watches;
 
+    // 在哈希表中查找与给定文件描述符相关联的表项
     watches = _dbus_hash_table_lookup_pollable(loop->watches, fd);
 
+    // 如果表项不存在，创建一个新的表项
     if (watches == NULL) {
+        // 分配一个新的 DBusList 指针数组
         watches = dbus_new0(DBusList *, 1);
 
+        // 如果分配失败，返回 NULL
         if (watches == NULL)
             return watches;
 
+        // 尝试将新的表项插入到哈希表中
         if (!_dbus_hash_table_insert_pollable(loop->watches, fd, watches)) {
+            // 如果插入失败，释放分配的内存并将指针置为 NULL
             dbus_free(watches);
             watches = NULL;
         }
     }
 
+    // 返回找到或新创建的表项
     return watches;
 }
 
@@ -279,6 +299,7 @@ dbus_bool_t _dbus_loop_add_watch(DBusLoop *loop, DBusWatch *watch)
         return FALSE;
     }
 
+    // TODO 不懂为啥要这样判断
     if (_dbus_list_length_is_one(watches)) {
         // 尝试将文件描述符添加到事件循环的 pollable 集合中,这里是将客户端fd添加到ready set中
         if (!_dbus_pollable_set_add(loop->pollable_set, fd, dbus_watch_get_flags(watch),
@@ -468,7 +489,7 @@ dbus_bool_t _dbus_loop_dispatch(DBusLoop *loop)
     _dbus_verbose("  %d connections to dispatch\n", _dbus_list_get_length(&loop->need_dispatch));
 #endif
 
-    // 如果没有需要分发的连接,直接返回 FALSE
+    // 如果没有需要处理的消息,直接返回 FALSE
     if (loop->need_dispatch == NULL)
         return FALSE;
 
@@ -513,6 +534,7 @@ dbus_bool_t _dbus_loop_queue_dispatch(DBusLoop *loop, DBusConnection *connection
 /* Returns TRUE if we invoked any timeouts or have ready file
  * descriptors, which is just used in test code as a debug hack
  */
+// loop_iterate的作用就是调用watch？
 dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
 {
 #define N_STACK_DESCRIPTORS 64
@@ -535,6 +557,7 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
                   loop->timeout_count, loop->watch_count);
 #endif
 
+    // 最开始在main函数中已经添加了一个reload_pipe[0]描述符进行监视
     // 如果没有任何文件描述符或超时事件需要监视,直接返回
     if (_dbus_hash_table_get_n_entries(loop->watches) == 0 && loop->timeouts == NULL)
         goto next_iteration;
