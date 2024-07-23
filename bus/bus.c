@@ -219,28 +219,36 @@ static void new_connection_callback(DBusServer *server, DBusConnection *new_conn
     bus_context_add_incoming_connection(data, new_connection);
 }
 
+/**
+ * 添加一个传入的连接到 BusContext
+ *
+ * 该函数用于将一个新的传入连接添加到 `BusContext`，并配置连接的各种限制和属性。
+ *
+ * @param context 指向 BusContext 的指针，表示 DBus 守护进程的上下文。
+ * @param new_connection 指向新的 DBusConnection 的指针，表示传入的连接。
+ * @return 如果添加和配置成功，返回 TRUE；如果发生错误，返回 FALSE。
+ */
 dbus_bool_t bus_context_add_incoming_connection(BusContext *context, DBusConnection *new_connection)
 {
-    /* If this fails it logs a warning, so we don't need to do that */
+    /* 尝试设置连接的上下文，如果失败，关闭连接并返回 FALSE */
     if (!bus_connections_setup_connection(context->connections, new_connection)) {
-        /* if we don't do this, it will get unref'd without
-       * being disconnected... kind of strange really
-       * that we have to do this, people won't get it right
-       * in general.
-       */
         dbus_connection_close(new_connection);
-        /* on OOM, we won't have ref'd the connection so it will die. */
         return FALSE;
     }
 
+    /* 设置连接的最大接收字节数 */
     dbus_connection_set_max_received_size(new_connection, context->limits.max_incoming_bytes);
 
+    /* 设置连接的最大消息大小 */
     dbus_connection_set_max_message_size(new_connection, context->limits.max_message_size);
 
+    /* 设置连接的最大接收 Unix 文件描述符数量 */
     dbus_connection_set_max_received_unix_fds(new_connection, context->limits.max_incoming_unix_fds);
 
+    /* 设置连接的最大消息 Unix 文件描述符数量 */
     dbus_connection_set_max_message_unix_fds(new_connection, context->limits.max_message_unix_fds);
 
+    /* 设置是否允许匿名连接 */
     dbus_connection_set_allow_anonymous(new_connection, context->allow_anonymous);
 
     return TRUE;
@@ -253,44 +261,77 @@ static void free_server_data(void *data)
     dbus_free(bd);
 }
 
+/**
+ * 配置 DBus 服务器
+ *
+ * 该函数用于配置和初始化给定的 DBus 服务器实例，包括设置认证机制和新连接回调函数。
+ *
+ * @param context 指向 BusContext 的指针，表示 DBus 守护进程的上下文。
+ * @param server 指向 DBusServer 的指针，表示需要配置的服务器实例。
+ * @param auth_mechanisms 字符串数组，包含允许的身份验证机制。
+ * @param error 用于存储错误信息的 DBusError 对象。
+ * @return 如果配置成功，返回 TRUE；如果发生错误，返回 FALSE。
+ */
 static dbus_bool_t setup_server(BusContext *context, DBusServer *server, char **auth_mechanisms, DBusError *error)
 {
+    // 调用 bus_context_setup_server 函数，根据上下文设置服务器
     if (!bus_context_setup_server(context, server, error))
         return FALSE;
 
+    // 设置服务器的认证机制
     if (!dbus_server_set_auth_mechanisms(server, (const char **)auth_mechanisms)) {
+        // 如果设置失败，设置内存不足错误并返回 FALSE
         BUS_SET_OOM(error);
         return FALSE;
     }
 
+    // 设置新连接回调函数，当有新连接时调用 new_connection_callback
     dbus_server_set_new_connection_function(server, new_connection_callback, context, NULL);
+
+    // 配置成功，返回 TRUE
     return TRUE;
 }
 
+/**
+ * 为 DBus 服务器设置上下文
+ *
+ * 该函数用于为给定的 DBus 服务器实例设置上下文和相关回调函数，以便服务器能够处理监视和超时事件。
+ *
+ * @param context 指向 BusContext 的指针，表示 DBus 守护进程的上下文。
+ * @param server 指向 DBusServer 的指针，表示需要配置的服务器实例。
+ * @param error 用于存储错误信息的 DBusError 对象。
+ * @return 如果配置成功，返回 TRUE；如果发生错误，返回 FALSE。
+ */
 dbus_bool_t bus_context_setup_server(BusContext *context, DBusServer *server, DBusError *error)
 {
     BusServerData *bd;
 
+    // 为 BusServerData 分配内存并初始化为 0
     bd = dbus_new0(BusServerData, 1);
+    // 如果内存分配失败或者设置服务器数据失败，释放已分配的内存，并设置内存不足错误
     if (bd == NULL || !dbus_server_set_data(server, server_data_slot, bd, free_server_data)) {
         dbus_free(bd);
         BUS_SET_OOM(error);
         return FALSE;
     }
 
+    // 设置上下文
     bd->context = context;
 
+    // 设置服务器的监视函数
     if (!dbus_server_set_watch_functions(server, add_server_watch, remove_server_watch, toggle_server_watch, server,
                                          NULL)) {
         BUS_SET_OOM(error);
         return FALSE;
     }
 
+    // 设置服务器的超时函数
     if (!dbus_server_set_timeout_functions(server, add_server_timeout, remove_server_timeout, NULL, server, NULL)) {
         BUS_SET_OOM(error);
         return FALSE;
     }
 
+    // 配置成功，返回 TRUE
     return TRUE;
 }
 
@@ -298,9 +339,11 @@ dbus_bool_t bus_context_setup_server(BusContext *context, DBusServer *server, DB
  * config files are parsed.  It is not executed
  * when config files are reloaded.
  */
+/**该函数用于在 dbus-daemon 第一次启动时进行配置的初始化。它从配置解析器 (BusConfigParser) 中获取各种配置参数并设置到 BusContext 中，如果过程中出现任何错误，则设置错误信息并返回 FALSE。*/
 static dbus_bool_t process_config_first_time_only(BusContext *context, BusConfigParser *parser,
                                                   const DBusString *address, BusContextFlags flags, DBusError *error)
 {
+    // 局部变量声明
     DBusString log_prefix;
     DBusList *link;
     DBusList **addresses;
@@ -311,12 +354,14 @@ static dbus_bool_t process_config_first_time_only(BusContext *context, BusConfig
     dbus_bool_t retval;
     DBusLogFlags log_flags = DBUS_LOG_FLAGS_STDERR;
 
+    // 确保错误对象为空
     _DBUS_ASSERT_ERROR_IS_CLEAR(error);
 
     retval = FALSE;
     auth_mechanisms = NULL;
     pidfile = NULL;
 
+    // 处理系统日志标志
     if (flags & BUS_CONTEXT_FLAG_SYSLOG_ALWAYS) {
         context->syslog = TRUE;
         log_flags |= DBUS_LOG_FLAGS_SYSTEM_LOG;
@@ -332,19 +377,16 @@ static dbus_bool_t process_config_first_time_only(BusContext *context, BusConfig
             log_flags |= DBUS_LOG_FLAGS_SYSTEM_LOG;
     }
 
+    // 初始化系统日志
     _dbus_init_system_log("dbus-daemon", log_flags);
 
+    // 处理 systemd 激活标志
     if (flags & BUS_CONTEXT_FLAG_SYSTEMD_ACTIVATION)
         context->systemd_activation = TRUE;
     else
         context->systemd_activation = FALSE;
 
-    /* Check for an existing pid file. Of course this is a race;
-   * we'd have to use fcntl() locks on the pid file to
-   * avoid that. But we want to check for the pid file
-   * before overwriting any existing sockets, etc.
-   */
-
+    // 检查 PID 文件
     if (flags & BUS_CONTEXT_FLAG_WRITE_PID_FILE)
         pidfile = bus_config_parser_get_pidfile(parser);
 
@@ -379,14 +421,15 @@ static dbus_bool_t process_config_first_time_only(BusContext *context, BusConfig
         }
     }
 
-    /* keep around the pid filename so we can delete it later */
+    // 保存 PID 文件路径
     context->pidfile = _dbus_strdup(pidfile);
 
-    /* note that type may be NULL */
+    // 保存总线类型
     context->type = _dbus_strdup(bus_config_parser_get_type(parser));
     if (bus_config_parser_get_type(parser) != NULL && context->type == NULL)
         goto oom;
 
+    // 获取运行用户
     user = bus_config_parser_get_user(parser);
     if (user != NULL) {
         context->user = _dbus_strdup(user);
@@ -394,7 +437,7 @@ static dbus_bool_t process_config_first_time_only(BusContext *context, BusConfig
             goto oom;
     }
 
-    /* Set up the prefix for syslog messages */
+    // 设置系统日志前缀
     if (!_dbus_string_init(&log_prefix))
         goto oom;
     if (context->type && !strcmp(context->type, "system")) {
@@ -424,8 +467,7 @@ static dbus_bool_t process_config_first_time_only(BusContext *context, BusConfig
         goto oom;
     _dbus_string_free(&log_prefix);
 
-    /* Build an array of auth mechanisms */
-
+    // 构建认证机制数组
     auth_mechanisms_list = bus_config_parser_get_mechanisms(parser);
     len = _dbus_list_get_length(auth_mechanisms_list);
 
@@ -467,11 +509,12 @@ static dbus_bool_t process_config_first_time_only(BusContext *context, BusConfig
         auth_mechanisms = NULL;
     }
 
-    /* Listen on our addresses */
-
+    // 监听地址
+    // 这个地址是什么？
     if (address) {
         DBusServer *server;
 
+        // 开始监听客户端传来的连接
         server = dbus_server_listen(_dbus_string_get_const_data(address), error);
         if (server == NULL) {
             _DBUS_ASSERT_ERROR_IS_SET(error);
@@ -506,6 +549,7 @@ static dbus_bool_t process_config_first_time_only(BusContext *context, BusConfig
         }
     }
 
+    // 设置其他上下文参数
     context->fork = bus_config_parser_get_fork(parser);
     context->keep_umask = bus_config_parser_get_keep_umask(parser);
     context->allow_anonymous = bus_config_parser_get_allow_anonymous(parser);
@@ -678,31 +722,44 @@ static void raise_file_descriptor_limit(BusContext *context)
 #endif
 }
 
+/**
+ * 在配置解析后进行初始化处理
+ *
+ * @param context DBus 守护进程的上下文
+ * @param parser 解析器对象，用于解析配置文件
+ * @param error 用于报告错误的 DBusError 对象
+ * @return 如果成功返回 TRUE，否则返回 FALSE
+ */
 static dbus_bool_t process_config_postinit(BusContext *context, BusConfigParser *parser, DBusError *error)
 {
     DBusHashTable *service_context_table;
     DBusList *watched_dirs = NULL;
 
+    // 从解析器中获取服务上下文表
     service_context_table = bus_config_parser_steal_service_context_table(parser);
+    // 设置服务上下文表到注册表中，如果失败，设置内存不足错误并返回 FALSE
     if (!bus_registry_set_service_context_table(context->registry, service_context_table)) {
         BUS_SET_OOM(error);
         return FALSE;
     }
 
+    // 取消引用服务上下文表
     _dbus_hash_table_unref(service_context_table);
 
-    /* We need to monitor both the configuration directories and directories
-   * containing .service files.
-   */
+    /* 我们需要监控配置目录和包含 .service 文件的目录 */
+    // 获取需要监控的目录列表，如果失败，设置内存不足错误并返回 FALSE
     if (!bus_config_parser_get_watched_dirs(parser, &watched_dirs)) {
         BUS_SET_OOM(error);
         return FALSE;
     }
 
+    // 设置需要监控的目录
     bus_set_watched_dirs(context, &watched_dirs);
 
+    // 清除目录列表
     _dbus_list_clear(&watched_dirs);
 
+    // 返回 TRUE 表示成功
     return TRUE;
 }
 
@@ -858,6 +915,7 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
     // 创建容器管理器
     // 这里的容器是啥？
     // 先不管吧
+    // 看起来这个container暂时没啥用
     context->containers = bus_containers_new();
 
     if (context->containers == NULL) {
@@ -907,6 +965,7 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
     // TODO
     raise_file_descriptor_limit(context);
 
+    // TODO
     // 如果需要,切换到指定的用户身份
     if (context->user != NULL) {
         if (!_dbus_change_to_daemon_user(context->user, error)) {

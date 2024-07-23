@@ -54,3 +54,4 @@ tags
 .cache
 build
 *.out*
+/tmp.txt

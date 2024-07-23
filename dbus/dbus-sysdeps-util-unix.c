@@ -282,6 +282,7 @@ dbus_bool_t _dbus_verify_daemon_user(const char *user)
  * @param error return location for errors
  * @returns #FALSE on failure
  */
+// TODO: 这个函数用来做什么的？
 dbus_bool_t _dbus_change_to_daemon_user(const char *user, DBusError *error)
 {
     dbus_uid_t uid;

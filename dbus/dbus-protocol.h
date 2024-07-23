@@ -465,7 +465,8 @@ extern "C" {
 
 /**checkpoint a process failed */
 #define DBUS_ERROR_CHECKPOINT    "org.freedesktop.DBus.Error.Checkpoint"
-
+/**checkpoint a process failed */
+#define DBUS_ERROR_RESTORE    "org.freedesktop.DBus.Error.Restore"
 
 /* XML introspection format */
 

@@ -77,6 +77,13 @@ static void socket_finalize(DBusServer *server)
 }
 // TODO: 看起来这里就是处理用户的新socket连接请求的位置了
 /* Return value is just for memory, not other failures. */
+/**
+ * 处理新的客户端连接并解锁服务器
+ *
+ * @param server DBus 服务器
+ * @param client_fd 新客户端连接的套接字
+ * @return 如果成功，返回 TRUE；如果失败，返回 FALSE
+ */
 static dbus_bool_t handle_new_client_fd_and_unlock(DBusServer *server, DBusSocket client_fd)
 {
     DBusConnection *connection;
@@ -84,57 +91,62 @@ static dbus_bool_t handle_new_client_fd_and_unlock(DBusServer *server, DBusSocke
     DBusNewConnectionFunction new_connection_function;
     void *new_connection_data;
 
+    // 输出调试信息，创建新的客户端连接
     _dbus_verbose("Creating new client connection with fd %" DBUS_SOCKET_FORMAT "\n",
                   _dbus_socket_printable(client_fd));
 
+    // 检查是否持有服务器锁
     HAVE_LOCK_CHECK(server);
 
+    // 设置套接字为非阻塞模式
     if (!_dbus_set_socket_nonblocking(client_fd, NULL)) {
         SERVER_UNLOCK(server);
         return TRUE;
     }
-    
+
+    // 为新客户端套接字创建传输对象
     transport = _dbus_transport_new_for_socket(client_fd, &server->guid_hex, NULL);
     if (transport == NULL) {
+        // 如果传输对象创建失败，关闭套接字并解锁服务器
         _dbus_close_socket(client_fd, NULL);
         SERVER_UNLOCK(server);
         return FALSE;
     }
 
+    // 设置传输对象的认证机制
     if (!_dbus_transport_set_auth_mechanisms(transport, (const char **)server->auth_mechanisms)) {
         _dbus_transport_unref(transport);
         SERVER_UNLOCK(server);
         return FALSE;
     }
 
-    /* note that client_fd is now owned by the transport, and will be
-   * closed on transport disconnection/finalization
-   */
+    // 现在传输对象拥有 client_fd，在传输断开或销毁时会关闭该套接字
 
+    // 为传输对象创建新的连接对象
     connection = _dbus_connection_new_for_transport(transport);
-    _dbus_transport_unref(transport);
-    transport = NULL; /* now under the connection lock */
+    _dbus_transport_unref(transport); // 传输对象引用计数减少
+    transport = NULL; // 传输对象现在由连接对象管理
 
     if (connection == NULL) {
         SERVER_UNLOCK(server);
         return FALSE;
     }
 
-    /* See if someone wants to handle this new connection, self-referencing
-   * for paranoia.
-   */
+    // 检查是否有新的连接回调函数
     new_connection_function = server->new_connection_function;
     new_connection_data = server->new_connection_data;
 
+    // 自引用服务器对象以防止并发修改
     _dbus_server_ref_unlocked(server);
     SERVER_UNLOCK(server);
 
+    // 如果存在新的连接回调函数，调用该函数
     if (new_connection_function) {
         (*new_connection_function)(server, connection, new_connection_data);
     }
     dbus_server_unref(server);
 
-    /* If no one grabbed a reference, the connection will die. */
+    // 如果没有其他引用，关闭连接
     _dbus_connection_close_if_only_one_ref(connection);
     dbus_connection_unref(connection);
 
@@ -142,8 +154,17 @@ static dbus_bool_t handle_new_client_fd_and_unlock(DBusServer *server, DBusSocke
 }
 
 // 这个watch完全有可能是null
+/**
+ * 处理与 DBus 监听套接字相关的事件
+ *
+ * @param watch DBus 监视对象，监视服务器的监听套接字
+ * @param flags 事件标志，指示需要处理的事件类型
+ * @param data 传递给回调函数的数据，这里是 DBus 服务器
+ * @return 总是返回 TRUE
+ */
 static dbus_bool_t socket_handle_watch(DBusWatch *watch, unsigned int flags, void *data)
 {
+    // 将传入的 data 转换为 DBusServer 和 DBusServerSocket 类型
     DBusServer *server = data;
     DBusServerSocket *socket_server = data;
 
@@ -152,55 +173,67 @@ static dbus_bool_t socket_handle_watch(DBusWatch *watch, unsigned int flags, voi
     dbus_bool_t found = FALSE;
 #endif
 
+    // 加锁以保护服务器数据结构
     SERVER_LOCK(server);
 
 #ifndef DBUS_DISABLE_ASSERT
+    // 检查 watch 是否在 socket_server 的监视列表中
+    // TODO: 这里没懂
     for (i = 0; i < socket_server->n_fds; i++) {
         if (socket_server->watch[i] == watch)
             found = TRUE;
     }
-    _dbus_assert(found);
+    _dbus_assert(found); // 确保找到了对应的 watch
 #endif
 
     _dbus_verbose("Handling client connection, flags 0x%x\n", flags);
 
+    // 如果有可读事件
     if (flags & DBUS_WATCH_READABLE) {
         DBusSocket client_fd;
         DBusSocket listen_fd;
         int saved_errno;
 
-        // 感觉获取到的应该是server socket id
+        // 获取监听套接字的文件描述符
         listen_fd = _dbus_watch_get_socket(watch);
 
+        // 接受客户端连接，可能带有 nonce 文件
+        // 这是啥？
         if (socket_server->noncefile)
             client_fd = _dbus_accept_with_noncefile(listen_fd, socket_server->noncefile);
         else
             client_fd = _dbus_accept(listen_fd);
 
+        // 保存 errno 以便调试
         saved_errno = _dbus_save_socket_errno();
 
+        // 检查接受的客户端套接字是否有效
         if (!_dbus_socket_is_valid(client_fd)) {
-            /* EINTR handled for us */
+            // 处理被中断的系统调用
 
             if (_dbus_get_is_errno_eagain_or_ewouldblock(saved_errno))
                 _dbus_verbose("No client available to accept after all\n");
             else
                 _dbus_verbose("Failed to accept a client connection: %s\n", _dbus_strerror(saved_errno));
 
+            // 解锁服务器
             SERVER_UNLOCK(server);
         } else {
+            // 处理新的客户端连接，并在必要时解锁
             if (!handle_new_client_fd_and_unlock(server, client_fd))
                 _dbus_verbose("Rejected client connection due to lack of memory\n");
         }
     }
 
+    // 如果有错误事件
     if (flags & DBUS_WATCH_ERROR)
         _dbus_verbose("Error on server listening socket\n");
 
+    // 如果有挂起事件
     if (flags & DBUS_WATCH_HANGUP)
         _dbus_verbose("Hangup on server listening socket\n");
 
-    return TRUE;
+    return TRUE; // 总是返回 TRUE
 }
 
 static void socket_disconnect(DBusServer *server)

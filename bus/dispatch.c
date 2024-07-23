@@ -170,8 +170,16 @@ dbus_bool_t bus_dispatch_matches(BusTransaction *transaction, DBusConnection *se
         return TRUE;
 }
 
+/**
+ * 处理收到的 DBus 消息并将其分发到合适的接收者
+ *
+ * @param connection DBus 连接
+ * @param message 收到的 DBus 消息
+ * @return 处理结果，表示消息是否被成功处理
+ */
 static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *message)
 {
+    // 定义变量
     const char *sender, *service_name;
     DBusError error;
     BusTransaction *transaction;
@@ -179,42 +187,40 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
     DBusHandlerResult result;
     DBusConnection *addressed_recipient;
 
+    // 初始化结果为已处理
     result = DBUS_HANDLER_RESULT_HANDLED;
 
+    // 初始化变量
     transaction = NULL;
     addressed_recipient = NULL;
     dbus_error_init(&error);
 
+    // 获取连接的上下文并确保其非空
     context = bus_connection_get_context(connection);
     _dbus_assert(context != NULL);
 
-    /* If we can't even allocate an OOM error, we just go to sleep
-   * until we can.
-   */
+    // 如果无法预分配内存不足错误，则等待内存
     while (!bus_connection_preallocate_oom_error(connection))
         _dbus_wait_for_memory();
 
-    /* Ref connection in case we disconnect it at some point in here */
+    // 增加连接的引用计数，以防止在处理过程中断开连接
     dbus_connection_ref(connection);
 
-    /* Monitors aren't meant to send messages to us. */
+    // 如果连接是监视器，不应发送消息
     if (bus_connection_is_monitor(connection)) {
         sender = bus_connection_get_name(connection);
 
-        /* should never happen */
+        // 如果发送者为空，设置为未知
         if (sender == NULL)
             sender = "(unknown)";
 
+        // 处理监视器断开连接的信号
         if (dbus_message_is_signal(message, DBUS_INTERFACE_LOCAL, "Disconnected")) {
             bus_context_log(context, DBUS_SYSTEM_LOG_INFO, "Monitoring connection %s closed.", sender);
             bus_connection_disconnected(connection);
             goto out;
         } else {
-            /* Monitors are not allowed to send messages, because that
-           * probably indicates that the monitor is incorrectly replying
-           * to its eavesdropped messages, and we want the authors of
-           * such monitors to fix them.
-           */
+            // 监视器不允许发送消息，如果发生，记录警告并关闭连接
             bus_context_log(context, DBUS_SYSTEM_LOG_WARNING,
                             "Monitoring connection %s (%s) is not allowed "
                             "to send messages; closing it. Please fix the "
@@ -233,34 +239,32 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
         }
     }
 
-    /* Make sure the message does not have any header fields that we
-   * don't understand (or validate), so that we can add header fields
-   * in future and clients can assume that we have checked them. */
+    // 确保消息没有任何未识别的头字段，并将消息容器实例设置为空
     if (!_dbus_message_remove_unknown_fields(message) || !dbus_message_set_container_instance(message, NULL)) {
         BUS_SET_OOM(&error);
         goto out;
     }
 
+    // 获取消息的目的服务名称
     service_name = dbus_message_get_destination(message);
 
 #ifdef DBUS_ENABLE_VERBOSE_MODE
     {
         const char *interface_name, *member_name, *error_name;
 
+        // 获取消息的接口名称、成员名称和错误名称
         interface_name = dbus_message_get_interface(message);
         member_name = dbus_message_get_member(message);
         error_name = dbus_message_get_error_name(message);
 
+        // 输出详细的消息分发信息
         _dbus_verbose("DISPATCH: %s %s %s to %s\n", interface_name ? interface_name : "(no interface)",
                       member_name ? member_name : "(no member)", error_name ? error_name : "(no error name)",
                       service_name ? service_name : "peer");
     }
 #endif /* DBUS_ENABLE_VERBOSE_MODE */
 
-    /* If service_name is NULL, if it's a signal we send it to all
-   * connections with a match rule. If it's not a signal, there
-   * are some special cases here but mostly we just bail out.
-   */
+    // 如果服务名称为空，处理信号消息和其他特殊情况
     if (service_name == NULL) {
         if (dbus_message_is_signal(message, DBUS_INTERFACE_LOCAL, "Disconnected")) {
             bus_connection_disconnected(connection);
@@ -268,26 +272,19 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
         }
 
         if (dbus_message_get_type(message) != DBUS_MESSAGE_TYPE_SIGNAL) {
-            /* DBusConnection also handles some of these automatically, we leave
-           * it to do so.
-           *
-           * FIXME: this means monitors won't get the opportunity to see
-           * non-signals with NULL destination, or their replies (which in
-           * practice are UnknownMethod errors)
-           */
             result = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
             goto out;
         }
     }
 
-    /* Create our transaction */
+    // 创建事务对象
     transaction = bus_transaction_new(context);
     if (transaction == NULL) {
         BUS_SET_OOM(&error);
         goto out;
     }
 
-    /* Assign a sender to the message */
+    // 为消息分配发送者
     if (bus_connection_is_active(connection)) {
         sender = bus_connection_get_name(connection);
         _dbus_assert(sender != NULL);
@@ -297,24 +294,18 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
             goto out;
         }
     } else {
-        /* For monitors' benefit: we don't want the sender to be able to
-       * trick the monitor by supplying a forged sender, and we also
-       * don't want the message to have no sender at all. */
+        // 如果连接未激活，将发送者设置为 :not.active.yet
         if (!dbus_message_set_sender(message, ":not.active.yet")) {
             BUS_SET_OOM(&error);
             goto out;
         }
     }
 
-    /* We need to refetch the service name here, because
-   * dbus_message_set_sender can cause the header to be
-   * reallocated, and thus the service_name pointer will become
-   * invalid.
-   */
+    // 重新获取服务名称，因为设置发送者可能会导致消息头重新分配
     service_name = dbus_message_get_destination(message);
 
-    if (service_name && strcmp(service_name, DBUS_SERVICE_DBUS) == 0) /* to bus driver */
-    {
+    // 处理发送到 bus driver 的消息
+    if (service_name && strcmp(service_name, DBUS_SERVICE_DBUS) == 0) {
         if (!bus_transaction_capture(transaction, connection, NULL, message)) {
             BUS_SET_OOM(&error);
             goto out;
@@ -328,8 +319,8 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
         _dbus_verbose("Giving message to %s\n", DBUS_SERVICE_DBUS);
         if (!bus_driver_handle_message(connection, transaction, message, &error))
             goto out;
-    } else if (!bus_connection_is_active(connection)) /* clients must talk to bus driver first */
-    {
+    } else if (!bus_connection_is_active(connection)) {
+        // 未注册客户端必须先与 bus driver 通信
         if (!bus_transaction_capture(transaction, connection, NULL, message)) {
             BUS_SET_OOM(&error);
             goto out;
@@ -338,8 +329,8 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
         _dbus_verbose("Received message from non-registered client. Disconnecting.\n");
         dbus_connection_close(connection);
         goto out;
-    } else if (service_name != NULL) /* route to named service */
-    {
+    } else if (service_name != NULL) {
+        // 处理发送到特定服务的消息
         DBusString service_string;
         BusService *service;
         BusRegistry *registry;
@@ -351,6 +342,7 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
         _dbus_string_init_const(&service_string, service_name);
         service = bus_registry_lookup(registry, &service_string);
 
+        // 如果服务不存在，尝试自动启动服务
         if (service == NULL && dbus_message_get_auto_start(message)) {
             BusActivation *activation;
 
@@ -361,11 +353,7 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
 
             activation = bus_connection_get_activation(connection);
 
-            /* This will do as much of a security policy check as it can.
-           * We can't do the full security policy check here, since the
-           * addressed recipient service doesn't exist yet. We do it before
-           * sending the message after the service has been created.
-           */
+            // 尝试激活服务
             if (!bus_activation_activate_service(activation, connection, transaction, TRUE, message, service_name,
                                                  &error)) {
                 _DBUS_ASSERT_ERROR_IS_SET(&error);
@@ -375,6 +363,7 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
 
             goto out;
         } else if (service == NULL) {
+            // 服务不存在，设置错误并跳转到 out 标签
             if (!bus_transaction_capture(transaction, connection, NULL, message)) {
                 BUS_SET_OOM(&error);
                 goto out;
@@ -383,6 +372,7 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
             dbus_set_error(&error, DBUS_ERROR_NAME_HAS_NO_OWNER, "Name \"%s\" does not exist", service_name);
             goto out;
         } else {
+            // 获取服务的主要所有者连接，并捕获事务
             addressed_recipient = bus_service_get_primary_owners_connection(service);
             _dbus_assert(addressed_recipient != NULL);
 
@@ -391,43 +381,35 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
                 goto out;
             }
         }
-    } else /* service_name == NULL */
-    {
+    } else {
+        // 处理未指定服务名称的消息
         if (!bus_transaction_capture(transaction, connection, NULL, message)) {
             BUS_SET_OOM(&error);
             goto out;
         }
     }
 
-    /* Now send the message to its destination (or not, if
-   * addressed_recipient == NULL), and match it against other connections'
-   * match rules.
-   */
+    // 将消息发送到其目的地，并匹配其他连接的匹配规则
     if (!bus_dispatch_matches(transaction, connection, addressed_recipient, message, &error))
         goto out;
 
 out:
+    // 如果设置了错误，发送错误回复或 OOM 错误
     if (dbus_error_is_set(&error)) {
-        /* Even if we disconnected it, pretend to send it any pending error
-       * messages so that monitors can observe them.
-       */
         if (dbus_error_has_name(&error, DBUS_ERROR_NO_MEMORY)) {
             bus_connection_send_oom_error(connection, message);
 
-            /* cancel transaction due to OOM */
+            // 由于 OOM 取消事务
             if (transaction != NULL) {
                 bus_transaction_cancel_and_free(transaction);
                 transaction = NULL;
             }
         } else {
-            /* Try to send the real error, if no mem to do that, send
-           * the OOM error
-           */
             _dbus_assert(transaction != NULL);
             if (!bus_transaction_send_error_reply(transaction, connection, &error, message)) {
                 bus_connection_send_oom_error(connection, message);
 
-                /* cancel transaction due to OOM */
+                // 由于 OOM 取消事务
                 if (transaction != NULL) {
                     bus_transaction_cancel_and_free(transaction);
                     transaction = NULL;
@@ -438,10 +420,12 @@ out:
         dbus_error_free(&error);
     }
 
+    // 执行并释放事务
     if (transaction != NULL) {
         bus_transaction_execute_and_free(transaction);
     }
 
+    // 取消引用连接
     dbus_connection_unref(connection);
 
     return result;
@@ -452,11 +436,22 @@ static DBusHandlerResult bus_dispatch_message_filter(DBusConnection *connection,
     return bus_dispatch(connection, message);
 }
 
+/**
+ * 将连接添加到分发机制中
+ *
+ * 该函数为指定的 DBusConnection 添加一个消息过滤器，
+ * 以便消息可以通过分发机制进行处理。
+ *
+ * @param connection 指向 DBusConnection 的指针
+ * @return 如果添加成功，返回 TRUE；如果发生错误，返回 FALSE
+ */
 dbus_bool_t bus_dispatch_add_connection(DBusConnection *connection)
 {
+    // 尝试为连接添加消息过滤器
     if (!dbus_connection_add_filter(connection, bus_dispatch_message_filter, NULL, NULL))
         return FALSE;
 
+    // 添加成功，返回 TRUE
     return TRUE;
 }
 

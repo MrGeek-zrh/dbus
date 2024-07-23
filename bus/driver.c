@@ -1978,6 +1978,80 @@ failed:
     return FALSE;
 }
 
+// directory 是checkpoint文件所在的目录，service是服务名称
+static dbus_bool_t restore(const char *service, const char *directory, dbus_bool_t verbose)
+{
+    return TRUE;
+}
+
+// 对restore功能的实现
+/**
+客户端会传来需要进行restore的服务的名称，就根据这个服务名称进行恢复
+// 1. 提取出服务的名称
+// 2. 根据服务名称，找到对应的checkpoint文件
+// 3. 根据checkpoint文件，进行restore
+// 4. 通知客户端，恢复成功
+*/
+static dbus_bool_t bus_driver_handle_restore(DBusConnection *connection, BusTransaction *transaction,
+                                             DBusMessage *message, DBusError *error)
+{
+    DBusConnection *conn;
+    DBusMessage *reply;
+    const char *service;
+    const char *s;
+
+    printf("=============restore func is called==============!!!\n");
+
+    // 确保错误状态清除
+    _DBUS_ASSERT_ERROR_IS_CLEAR(error);
+
+    reply = NULL; // 初始化回复消息为 NULL
+
+    // 1. 提取出服务的名称
+    // 使用帮助函数获取目标连接和服务名称
+    bus_driver_get_conn_helper(connection, message, "SERVICE", &service, &conn, error);
+
+    // 目前进行restore的dir直接写死，正常来说，这个应该是可以由用户在checkpoint的时候指定的
+    char *directory = CHECKPOINT_DEFAULT_PATH;
+    dbus_bool_t verbose = TRUE;
+    // 2. 根据服务名称，找到对应的checkpoint文件
+    // 3. 根据checkpoint文件，进行restore
+    if (!restore(service, directory, verbose)) {
+        dbus_set_error(error, DBUS_ERROR_RESTORE, "Could not restore service '%s'", service);
+        goto failed;
+    }
+    printf("\n\n\t\trestore service %s successed!\n\n", service);
+
+    // 4. 通知客户端，恢复成功
+    // 创建一个方法返回消息
+    reply = dbus_message_new_method_return(message);
+    if (reply == NULL)
+        goto oom; // 如果创建失败，跳到内存不足处理
+
+    s = "RestoreSuccessed";
+    // 将 PID 添加到回复消息中
+    if (!dbus_message_append_args(reply, DBUS_TYPE_STRING, &s, DBUS_TYPE_INVALID))
+        goto oom; // 如果添加失败，跳到内存不足处理
+
+    // 通过事务发送回复消息
+    if (!bus_transaction_send_from_driver(transaction, connection, reply))
+        goto oom; // 如果发送失败，跳到内存不足处理
+
+    dbus_message_unref(reply); // 释放回复消息
+
+    return TRUE;
+
+oom:
+    BUS_SET_OOM(error);
+
+failed:
+    // 只有在 open_container 成功后才调用 abandon_container
+    _DBUS_ASSERT_ERROR_IS_SET(error);
+    if (reply)
+        dbus_message_unref(reply);
+    return FALSE;
+}
+
 // 处理获取连接对应的 UNIX 进程 ID 的请求。它从消息中提取服务名称，找到对应的连接，并返回该连接的进程 ID
 static dbus_bool_t bus_driver_handle_get_connection_unix_process_id(DBusConnection *connection,
                                                                     BusTransaction *transaction, DBusMessage *message,
@@ -2729,6 +2803,9 @@ static const MessageHandler dbus_message_handlers[] = {
 
     // 增加checkpoint函数
     { "Checkpoint", DBUS_TYPE_STRING_AS_STRING, DBUS_TYPE_STRING_AS_STRING, bus_driver_handle_checkpoint,
+      METHOD_FLAG_ANY_PATH },
+    // 增加restore函数
+    { "Restore", DBUS_TYPE_STRING_AS_STRING, DBUS_TYPE_STRING_AS_STRING, bus_driver_handle_restore,
       METHOD_FLAG_ANY_PATH },
 
     { NULL, NULL, NULL, NULL }

@@ -38,8 +38,10 @@
 struct DBusLoop {
     int refcount; // 引用计数
     /** DBusPollable => dbus_malloc'd DBusList ** of references to DBusWatch */
-    DBusHashTable *watches; // 哈希表,用于存储文件描述符及其关联的 DBusWatch 对象列表. key 上被监控的文件描述符，value是文件描述符对应的watches结构。为啥是watches结构呢？而不是watch呢？
-    DBusPollableSet *pollable_set; // linux环境下，就可以理解成epoll_create1创建的epoll实例集合
+    DBusHashTable *
+            watches; // 哈希表,用于存储文件描述符及其关联的 DBusWatch 对象列表. key 上被监控的文件描述符，value是文件描述符对应的watches结构。为啥是watches结构呢？而不是watch呢？
+    DBusPollableSet *
+            pollable_set; // linux环境下，就可以理解成epoll_create1创建的epoll实例集合.一个DBusLoop应该是只会有一个epoll_create1创建的epoll实例
     DBusList *timeouts; // 超时事件列表
     int callback_list_serial; // 回调列表的序列号,用于检测回调列表是否被修改
     int watch_count; // 监视器 (DBusWatch) 的数量
@@ -237,28 +239,41 @@ static dbus_bool_t gc_watch_table_entry(DBusLoop *loop, DBusList **watches, DBus
     return TRUE;
 }
 
+/**
+ * 更新指定文件描述符的监视器
+ *
+ * @param loop DBusLoop 对象
+ * @param watches DBusWatch 对象的列表指针
+ * @param fd 文件描述符
+ */
 static void refresh_watches_for_fd(DBusLoop *loop, DBusList **watches, DBusPollable fd)
 {
     DBusList *link;
     unsigned int flags = 0;
     dbus_bool_t interested = FALSE;
 
+    // 断言文件描述符是有效的
     _dbus_assert(_dbus_pollable_is_valid(fd));
 
+    // 如果传入的监视器列表为 NULL，从哈希表中查找
     if (watches == NULL)
         watches = _dbus_hash_table_lookup_pollable(loop->watches, fd);
 
-    /* we allocated this in the first _dbus_loop_add_watch for the fd, and keep
-   * it until there are none left */
+    /* 我们在第一次调用 _dbus_loop_add_watch 时为 fd 分配了这个列表，并保持它直到不再有任何监视器 */
+    // 断言监视器列表不为 NULL
     _dbus_assert(watches != NULL);
 
+    // 遍历监视器列表，检查每个监视器的状态
     for (link = _dbus_list_get_first_link(watches); link != NULL; link = _dbus_list_get_next_link(watches, link)) {
+        // 如果监视器启用且上次未因内存不足而失败
         if (dbus_watch_get_enabled(link->data) && !_dbus_watch_get_oom_last_time(link->data)) {
+            // 获取监视器的标志位
             flags |= dbus_watch_get_flags(link->data);
             interested = TRUE;
         }
     }
 
+    // 根据监视器状态更新可轮询集合
     if (interested)
         _dbus_pollable_set_enable(loop->pollable_set, fd, flags);
     else
@@ -301,7 +316,7 @@ dbus_bool_t _dbus_loop_add_watch(DBusLoop *loop, DBusWatch *watch)
 
     // TODO 不懂为啥要这样判断
     if (_dbus_list_length_is_one(watches)) {
-        // 尝试将文件描述符添加到事件循环的 pollable 集合中,这里是将客户端fd添加到ready set中
+        // 尝试将文件描述符添加到事件循环的 pollable 集合中
         if (!_dbus_pollable_set_add(loop->pollable_set, fd, dbus_watch_get_flags(watch),
                                     dbus_watch_get_enabled(watch))) {
             // 如果添加失败，移除文件描述符对应的监视器表条目
@@ -558,7 +573,9 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
 #endif
 
     // 最开始在main函数中已经添加了一个reload_pipe[0]描述符进行监视
-    // 如果没有任何文件描述符或超时事件需要监视,直接返回
+    // 如果目前还没有添加任何文件描述符或超时事件进行监视,直接返回
+    // 目前还不确定最开始会不会进入这个goto
+    // 先不管吧
     if (_dbus_hash_table_get_n_entries(loop->watches) == 0 && loop->timeouts == NULL)
         goto next_iteration;
 
@@ -718,7 +735,9 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
         }
     }
 
-    // 处理就绪的文件描述符事件
+    // 目前有个疑惑，最开始的那个服务端监控socket在哪里创建的？目前还没找到
+    // 先不管这个吧
+    // 有新的连接来了？
     if (n_ready > 0) {
         for (i = 0; i < n_ready; i++) {
             DBusList **watches;
@@ -730,6 +749,7 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
             if (initial_serial != loop->callback_list_serial)
                 goto next_iteration;
 
+            // TODO: 不懂这个有啥用
             if (loop->depth != orig_depth)
                 goto next_iteration;
 
@@ -749,6 +769,8 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
                 continue;
 
             // 查找与该服务端文件描述符相关的监视器
+            // 第一次调用时，这个应该就是服务端的fd
+            // 但是这个fd是啥回事创建的呢？到目前为止，只创建过一个reload_pipe fd
             watches = _dbus_hash_table_lookup_pollable(loop->watches, ready_fds[i].fd);
 
             if (watches == NULL)

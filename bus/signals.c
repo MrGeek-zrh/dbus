@@ -979,6 +979,7 @@ out:
 }
 
 typedef struct RulePool RulePool;
+// TODO
 struct RulePool {
     /* Maps non-NULL interface names to non-NULL (DBusList **)s */
     DBusHashTable *rules_by_iface;
@@ -1072,39 +1073,58 @@ static void rule_list_ptr_free(DBusList **list)
     }
 }
 
+/**
+ * 创建一个新的BusMatchmaker实例
+ *
+ * @return 如果成功，返回新创建的BusMatchmaker指针；如果内存分配失败，返回NULL
+ */
 BusMatchmaker *bus_matchmaker_new(void)
 {
+    // 定义一个BusMatchmaker指针变量matchmaker和一个整数i
     BusMatchmaker *matchmaker;
     int i;
 
+    // 分配一个新的BusMatchmaker结构，初始化为0
     matchmaker = dbus_new0(BusMatchmaker, 1);
+    // 如果分配失败，返回NULL
     if (matchmaker == NULL)
         return NULL;
 
+    // 初始化引用计数为1
     matchmaker->refcount = 1;
 
+    // 初始化每种消息类型的规则池
     for (i = DBUS_MESSAGE_TYPE_INVALID; i < DBUS_NUM_MESSAGE_TYPES; i++) {
+        // 获取规则池指针
         RulePool *p = matchmaker->rules_by_type + i;
 
+        // 创建一个新的哈希表，用于存储按接口分类的规则
         p->rules_by_iface = _dbus_hash_table_new(DBUS_HASH_STRING, dbus_free, (DBusFreeFunction)rule_list_ptr_free);
 
+        // 如果哈希表创建失败，跳转到内存不足处理
         if (p->rules_by_iface == NULL)
             goto nomem;
     }
 
+    // 如果一切正常，返回创建的matchmaker指针
     return matchmaker;
 
 nomem:
+    // 处理内存不足的情况，释放已经分配的资源
     for (i = DBUS_MESSAGE_TYPE_INVALID; i < DBUS_NUM_MESSAGE_TYPES; i++) {
         RulePool *p = matchmaker->rules_by_type + i;
 
+        // 如果哈希表为空，退出循环
         if (p->rules_by_iface == NULL)
             break;
         else
+            // 取消引用哈希表，释放资源
             _dbus_hash_table_unref(p->rules_by_iface);
     }
+    // 释放matchmaker结构
     dbus_free(matchmaker);
 
+    // 返回NULL表示失败
     return NULL;
 }
 

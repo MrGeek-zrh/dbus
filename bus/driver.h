@@ -36,6 +36,7 @@ typedef enum {
 // 默认的system bus path
 #define SYSTEM_BUS_SOCKET_PATH "/run/dbus/system_bus_socket"
 #define SYSTEM_BUS_INODE_FILE "/run/dbus/sytem_bus_socket/inode.txt"
+#define CHECKPOINT_DEFAULT_PATH "/tmp/criu"
 struct criu_opts {
     /* The type of criu invocation, one of "dump" or "restore" */
     const char *action;

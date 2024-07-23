@@ -4718,6 +4718,24 @@ void dbus_connection_set_wakeup_main_function(DBusConnection *connection, DBusWa
  * @param data data for function
  * @param free_data_function free the function data
  */
+/**
+ * 设置在分发状态改变时调用的函数。
+ *
+ * 当分发状态为 #DBUS_DISPATCH_DATA_REMAINS 时，需要调用
+ * dbus_connection_dispatch() 以处理传入的消息。然而，
+ * dbus_connection_dispatch() 绝对不能在 DBusDispatchStatusFunction 内调用。
+ * 实际上，在该函数内进行任何形式的重入操作都是不好的主意。
+ * 相反，DBusDispatchStatusFunction 应该简单地保存一个指示，
+ * 表明稍后在主循环重新进入时应该分发消息。
+ *
+ * 如果未设置分发状态函数，则必须确保在主循环的每次迭代中进行分发，
+ * 尤其是在调用 dbus_watch_handle() 或 dbus_timeout_handle() 后。
+ *
+ * @param connection 指向 DBusConnection 的指针
+ * @param function 在分发状态改变时调用的函数
+ * @param data 传递给函数的数据
+ * @param free_data_function 用于释放函数数据的函数
+ */
 void dbus_connection_set_dispatch_status_function(DBusConnection *connection, DBusDispatchStatusFunction function,
                                                   void *data, DBusFreeFunction free_data_function)
 {
@@ -4726,17 +4744,22 @@ void dbus_connection_set_dispatch_status_function(DBusConnection *connection, DB
 
     _dbus_return_if_fail(connection != NULL);
 
+    // 锁定连接以确保线程安全
     CONNECTION_LOCK(connection);
+
+    // 保存旧的数据和释放函数
     old_data = connection->dispatch_status_data;
     old_free_data = connection->free_dispatch_status_data;
 
+    // 设置新的分发状态函数和相关数据
     connection->dispatch_status_function = function;
     connection->dispatch_status_data = data;
     connection->free_dispatch_status_data = free_data_function;
 
+    // 解锁连接
     CONNECTION_UNLOCK(connection);
 
-    /* Callback outside the lock */
+    // 在锁外调用旧的释放函数
     if (old_free_data)
         (*old_free_data)(old_data);
 }
@@ -4934,6 +4957,24 @@ dbus_bool_t dbus_connection_get_adt_audit_session_data(DBusConnection *connectio
  * @param function the predicate
  * @param data data to pass to the predicate
  * @param free_data_function function to free the data
+ */
+/**
+ * 设置用于确定给定用户 ID 是否被允许连接的谓词函数
+ *
+ * 当一个传入的连接使用特定的用户 ID 进行身份验证时，将调用该函数；
+ * 如果该函数返回 #TRUE，则允许连接继续，否则断开连接。
+ *
+ * 如果将函数设置为 #NULL（默认值），则只有与服务器进程相同的 UID 才被允许连接。
+ * 此外，root 用户始终被允许连接。
+ *
+ * 在 Windows 上，当连接被释放或设置了新函数时，该函数及其 free_data_function 将被调用。
+ * 但是，该函数实际上不会被调用，因为在 Windows 上没有 UNIX 用户 ID 传递给它，
+ * 或者现有的身份验证协议不允许在 Windows 上以 UNIX 用户身份进行身份验证。
+ *
+ * @param connection 指向 DBusConnection 的指针
+ * @param function 用于确定是否允许连接的谓词函数
+ * @param data 传递给谓词函数的数据
+ * @param free_data_function 用于释放数据的函数
  */
 void dbus_connection_set_unix_user_function(DBusConnection *connection, DBusAllowUnixUserFunction function, void *data,
                                             DBusFreeFunction free_data_function)
@@ -5167,6 +5208,19 @@ void _dbus_connection_set_builtin_filters_enabled(DBusConnection *connection, db
  * @param connection the connection
  * @param value #TRUE to pass through org.freedesktop.DBus.Peer messages with a bus name set
  */
+/**
+ * 设置是否路由 org.freedesktop.DBus.Peer 接口的消息
+ *
+ * 通常情况下，#DBusConnection 会自动处理所有发送到 org.freedesktop.DBus.Peer 接口的消息。
+ * 然而，消息总线需要能够通过总线路由该接口上的方法调用到其他应用程序。
+ * 如果启用了路由 peer 消息的功能，那么带有总线目标名称的 org.freedesktop.DBus.Peer 接口消息
+ * 将不会由 #DBusConnection 自动处理，而是会正常分发到应用程序。
+ *
+ * 如果普通应用程序设置了这个标志，可能会导致严重问题。所以不要设置这个标志，除非你是消息总线。
+ *
+ * @param connection 指向 DBusConnection 的指针
+ * @param value #TRUE 表示将带有总线名称的 org.freedesktop.DBus.Peer 消息通过总线传递
+ */
 void dbus_connection_set_route_peer_messages(DBusConnection *connection, dbus_bool_t value)
 {
     _dbus_return_if_fail(connection != NULL);
@@ -5197,14 +5251,32 @@ void dbus_connection_set_route_peer_messages(DBusConnection *connection, dbus_bo
  * @param free_data_function function to use for freeing user data
  * @returns #TRUE on success, #FALSE if not enough memory.
  */
+/**
+ * 添加消息过滤器。过滤器是用于处理所有传入消息的处理程序，
+ * 在 dbus_connection_register_object_path() 注册的对象之前运行。
+ * 过滤器按照添加的顺序运行。相同的处理程序可以多次添加为过滤器，
+ * 这种情况下它将运行多次。在过滤器回调期间添加的过滤器不会对正在处理的消息运行。
+ *
+ * @todo 我们不会在不进入主循环的情况下阻塞时运行过滤器，因为过滤器是作为 
+ * dbus_connection_dispatch() 的一部分运行的。这可能是一个特性，因为过滤器可能会导致任意的重入性。
+ * 但如果你出于某种原因试图过滤 METHOD_RETURN，这会很麻烦。
+ *
+ * @param connection 指向 DBusConnection 的指针
+ * @param function 处理消息的函数
+ * @param user_data 传递给函数的用户数据
+ * @param free_data_function 用于释放用户数据的函数
+ * @returns 成功时返回 #TRUE，内存不足时返回 #FALSE
+ */
 dbus_bool_t dbus_connection_add_filter(DBusConnection *connection, DBusHandleMessageFunction function, void *user_data,
                                        DBusFreeFunction free_data_function)
 {
     DBusMessageFilter *filter;
 
+    // 检查参数的有效性
     _dbus_return_val_if_fail(connection != NULL, FALSE);
     _dbus_return_val_if_fail(function != NULL, FALSE);
 
+    // 分配并初始化 DBusMessageFilter 结构体
     filter = dbus_new0(DBusMessageFilter, 1);
     if (filter == NULL)
         return FALSE;
@@ -5213,17 +5285,14 @@ dbus_bool_t dbus_connection_add_filter(DBusConnection *connection, DBusHandleMes
 
     CONNECTION_LOCK(connection);
 
+    // 将过滤器添加到连接的过滤器列表中
     if (!_dbus_list_append(&connection->filter_list, filter)) {
         _dbus_message_filter_unref(filter);
         CONNECTION_UNLOCK(connection);
         return FALSE;
     }
 
-    /* Fill in filter after all memory allocated,
-   * so we don't run the free_user_data_function
-   * if the add_filter() fails
-   */
-
+    // 在所有内存分配成功后填充过滤器
     filter->function = function;
     filter->user_data = user_data;
     filter->free_user_data_function = free_data_function;

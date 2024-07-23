@@ -472,6 +472,25 @@ static const struct {
  * @returns a new #DBusServer, or #NULL on failure.
  * 
  */
+/**
+ * 在给定地址上监听新连接。如果地址中包含多个用分号分隔的地址条目，
+ * 会尝试每一个并在第一个可用的地址上监听。
+ *
+ * 如果监听失败，返回 #NULL 并设置错误信息。
+ * 否则，返回一个新的 #DBusServer。
+ * 应立即调用 dbus_server_set_new_connection_function()、
+ * dbus_server_set_watch_functions() 和
+ * dbus_server_set_timeout_functions() 使服务器完全功能化。
+ *
+ * 要释放服务器，应用程序必须先调用 dbus_server_disconnect()，
+ * 然后调用 dbus_server_unref()。
+ *
+ * @param address 服务器的地址。
+ * @param error 存储失败原因的位置。
+ * @returns 一个新的 #DBusServer，失败时返回 #NULL。
+ */
+// 这个是一个重要函数，一些重要的回掉函数就是在这里设置的
+// TODO
 DBusServer *dbus_server_listen(const char *address, DBusError *error)
 {
     DBusServer *server;
@@ -814,6 +833,20 @@ void dbus_server_set_new_connection_function(DBusServer *server, DBusNewConnecti
  * @param free_data_function function to be called to free the data.
  * @returns #FALSE on failure (no memory)
  */
+/**
+ * 设置服务器的监视函数。这些函数负责让应用程序的主循环感知到需要监控的文件描述符上的事件。
+ *
+ * 该函数的行为与 dbus_connection_set_watch_functions() 完全相同；
+ * 详情请参见该函数的文档。
+ *
+ * @param server 指向服务器的指针。
+ * @param add_function 开始监控新描述符的函数。
+ * @param remove_function 停止监控描述符的函数。
+ * @param toggled_function 通知监视器启用/禁用的函数。
+ * @param data 传递给 add_function 和 remove_function 的数据。
+ * @param free_data_function 用于释放数据的函数。
+ * @returns 失败时返回 #FALSE（内存不足）
+ */
 dbus_bool_t dbus_server_set_watch_functions(DBusServer *server, DBusAddWatchFunction add_function,
                                             DBusRemoveWatchFunction remove_function,
                                             DBusWatchToggledFunction toggled_function, void *data,
@@ -822,21 +855,30 @@ dbus_bool_t dbus_server_set_watch_functions(DBusServer *server, DBusAddWatchFunc
     dbus_bool_t result;
     DBusWatchList *watches;
 
+    // 确保服务器指针不为空
     _dbus_return_val_if_fail(server != NULL, FALSE);
 
+    // 获取服务器锁，确保线程安全
     SERVER_LOCK(server);
+    // 备份当前的监视列表并将服务器的监视列表置空
     watches = server->watches;
     server->watches = NULL;
     if (watches) {
+        // 释放服务器锁以便在设置函数时不阻塞其他操作
         SERVER_UNLOCK(server);
+        // 设置监视列表的函数
         result = _dbus_watch_list_set_functions(watches, add_function, remove_function, toggled_function, data,
                                                 free_data_function);
+        // 重新获取服务器锁
         SERVER_LOCK(server);
     } else {
+        // 警告：重入调用
         _dbus_warn_check_failed("Re-entrant call to %s", _DBUS_FUNCTION_NAME);
         result = FALSE;
     }
+    // 恢复服务器的监视列表
     server->watches = watches;
+    // 释放服务器锁
     SERVER_UNLOCK(server);
 
     return result;

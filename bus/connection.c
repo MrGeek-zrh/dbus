@@ -465,53 +465,75 @@ static void free_connection_data(void *data)
     dbus_free(d);
 }
 
+/**
+ * 创建一个新的 BusConnections 实例
+ * BusConnections 是 D-Bus 守护进程中用于管理所有连接的结构体？
+ *
+ * @param context DBus 守护进程的上下文
+ * @return 如果成功，返回新创建的 BusConnections 指针；如果内存分配失败，返回 NULL
+ */
 BusConnections *bus_connections_new(BusContext *context)
 {
     BusConnections *connections;
 
+    // 分配数据槽，用于存储连接相关的数据
     if (!dbus_connection_allocate_data_slot(&connection_data_slot))
         goto failed_0;
 
+    // 分配并初始化 BusConnections 结构
     connections = dbus_new0(BusConnections, 1);
     if (connections == NULL)
         goto failed_1;
 
+    // 创建一个新的哈希表，用于存储由用户完成的连接
     connections->completed_by_user = _dbus_hash_table_new(DBUS_HASH_UINTPTR, NULL, NULL);
     if (connections->completed_by_user == NULL)
         goto failed_2;
 
-    connections->expire_timeout = _dbus_timeout_new(100, /* irrelevant */
+    // 创建一个新的超时对象，用于处理未完成的连接超时
+    connections->expire_timeout = _dbus_timeout_new(100, /* 时间间隔（毫秒），在此上下文中无关紧要 */
                                                     expire_incomplete_timeout, connections, NULL);
     if (connections->expire_timeout == NULL)
         goto failed_3;
 
+    // 禁用超时对象，初始状态下不启用
     _dbus_timeout_disable(connections->expire_timeout);
 
+    // 创建一个新的过期列表，用于管理待处理的回复
     connections->pending_replies = bus_expire_list_new(bus_context_get_loop(context),
                                                        bus_context_get_reply_timeout(context),
                                                        bus_pending_reply_expired, connections);
     if (connections->pending_replies == NULL)
         goto failed_4;
 
+    // 将超时对象添加到事件循环中
     if (!_dbus_loop_add_timeout(bus_context_get_loop(context), connections->expire_timeout))
         goto failed_5;
 
+    // 初始化引用计数和上下文
     connections->refcount = 1;
     connections->context = context;
 
+    // 返回成功创建的 BusConnections 实例
     return connections;
 
 failed_5:
+    // 释放过期列表
     bus_expire_list_free(connections->pending_replies);
 failed_4:
+    // 取消引用超时对象
     _dbus_timeout_unref(connections->expire_timeout);
 failed_3:
+    // 取消引用哈希表
     _dbus_hash_table_unref(connections->completed_by_user);
 failed_2:
+    // 释放 BusConnections 结构
     dbus_free(connections);
 failed_1:
+    // 释放数据槽
     dbus_connection_free_data_slot(&connection_data_slot);
 failed_0:
+    // 返回 NULL 表示失败
     return NULL;
 }
 
@@ -743,6 +765,15 @@ static dbus_bool_t pending_unix_fds_timeout_cb(void *data)
     return TRUE;
 }
 
+/**
+ * 为新的传入连接设置上下文和回调函数
+ *
+ * 该函数负责为新的传入连接初始化必要的上下文数据、设置监视和超时回调函数，并配置连接的安全和性能限制。
+ *
+ * @param connections 指向 BusConnections 的指针，表示连接的集合。
+ * @param connection 指向新的 DBusConnection 的指针，表示传入的连接。
+ * @return 如果设置成功，返回 TRUE；如果发生错误，返回 FALSE。
+ */
 dbus_bool_t bus_connections_setup_connection(BusConnections *connections, DBusConnection *connection)
 {
     BusConnectionData *d = NULL;
@@ -860,8 +891,9 @@ dbus_bool_t bus_connections_setup_connection(BusConnections *connections, DBusCo
 oom:
     // 处理内存不足情况
     bus_context_log(connections->context, DBUS_SYSTEM_LOG_WARNING, "No memory to set up new connection");
-    // 处理错误情况
+
 error:
+    // 处理错误情况
     if (d != NULL) {
         d->selinux_id = NULL;
 
@@ -879,9 +911,6 @@ error:
 
         // 解除 UNIX 用户函数
         dbus_connection_set_unix_user_function(connection, NULL, NULL, NULL);
-
-        // 解除 Windows 用户函数
-        dbus_connection_set_windows_user_function(connection, NULL, NULL, NULL);
 
         // 解除分发状态函数
         dbus_connection_set_dispatch_status_function(connection, NULL, NULL, NULL);
@@ -2531,6 +2560,15 @@ static void bcd_drop_monitor_rules(BusConnectionData *d, DBusConnection *connect
         bus_matchmaker_disconnected(mm, connection);
 }
 
+/**
+ * 将一个连接设置为监视器连接
+ *
+ * @param connection 要设置为监视器的 DBus 连接
+ * @param transaction 当前事务
+ * @param rules 监视器规则列表
+ * @param error 错误信息结构
+ * @return 如果成功，返回 TRUE；如果失败，返回 FALSE 并设置错误信息
+ */
 dbus_bool_t bus_connection_be_monitor(DBusConnection *connection, BusTransaction *transaction, DBusList **rules,
                                       DBusError *error)
 {
@@ -2539,36 +2577,41 @@ dbus_bool_t bus_connection_be_monitor(DBusConnection *connection, BusTransaction
     DBusList *tmp;
     DBusList *iter;
 
+    // 获取连接的数据
     d = BUS_CONNECTION_DATA(connection);
     _dbus_assert(d != NULL);
 
+    // 分配一个新的链表节点用于存储连接
     link = _dbus_list_alloc_link(connection);
 
     if (link == NULL) {
+        // 如果分配失败，设置内存不足错误并返回 FALSE
         BUS_SET_OOM(error);
         return FALSE;
     }
 
+    // 为连接添加监视器规则
     if (!bcd_add_monitor_rules(d, connection, rules)) {
+        // 如果添加规则失败，释放链表节点并设置内存不足错误
         _dbus_list_free_link(link);
         BUS_SET_OOM(error);
         return FALSE;
     }
 
-    /* release all its names */
+    // 释放连接所拥有的所有服务名称
     if (!_dbus_list_copy(&d->services_owned, &tmp)) {
+        // 如果复制服务列表失败，移除监视器规则，释放链表节点并设置内存不足错误
         bcd_drop_monitor_rules(d, connection);
         _dbus_list_free_link(link);
         BUS_SET_OOM(error);
         return FALSE;
     }
 
+    // 迭代释放服务名称
     for (iter = _dbus_list_get_first_link(&tmp); iter != NULL; iter = _dbus_list_get_next_link(&tmp, iter)) {
         BusService *service = iter->data;
 
-        /* This call is transactional: if there isn't enough memory to
-       * do everything, then the service gets all its names back when
-       * the transaction is cancelled due to OOM. */
+        // 从服务中移除连接的所有者身份，如果失败，则撤销所有更改并返回 FALSE
         if (!bus_service_remove_owner(service, connection, transaction, error)) {
             bcd_drop_monitor_rules(d, connection);
             _dbus_list_free_link(link);
@@ -2577,14 +2620,14 @@ dbus_bool_t bus_connection_be_monitor(DBusConnection *connection, BusTransaction
         }
     }
 
-    /* We have now done everything that can fail, so there is no problem
-   * with doing the irrevocable stuff. */
-
+    // 清空临时服务列表
     _dbus_list_clear(&tmp);
 
+    // 记录连接成为监视器的信息日志
     bus_context_log(transaction->context, DBUS_SYSTEM_LOG_INFO, "Connection %s (%s) became a monitor.", d->name,
                     d->cached_loginfo_string);
 
+    // 如果连接有匹配规则，移除这些规则
     if (d->n_match_rules > 0) {
         BusMatchmaker *mm;
 
@@ -2592,12 +2635,11 @@ dbus_bool_t bus_connection_be_monitor(DBusConnection *connection, BusTransaction
         bus_matchmaker_disconnected(mm, connection);
     }
 
-    /* flag it as a monitor */
+    // 将连接标记为监视器
     d->link_in_monitors = link;
     _dbus_list_append_link(&d->connections->monitors, link);
 
-    /* it isn't allowed to reply, and it is no longer relevant whether it
-   * receives replies */
+    // 移除连接的所有待处理回复
     bus_connection_drop_pending_replies(d->connections, connection);
 
     return TRUE;
