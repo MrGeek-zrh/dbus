@@ -1,0 +1,4 @@
+[build-and-restart-dbus-daemon]
+command=<root>/scripts/build.sh && <root>/scripts/check.sh && <root>/scripts/get_dbus_daemon_pid.sh
+cwd=<root>
+output=terminal
