@@ -1108,6 +1108,7 @@ DBusTransport *_dbus_transport_new_for_socket(DBusSocket fd, const DBusString *s
         goto failed;
 
     // 创建用于写入的监视器
+    // TODO:这里为啥回调函数设置成null?
     socket_transport->write_watch =
             _dbus_watch_new(_dbus_socket_get_pollable(fd), DBUS_WATCH_WRITABLE, FALSE, NULL, NULL, NULL);
     if (socket_transport->write_watch == NULL)

@@ -824,6 +824,7 @@ dbus_bool_t bus_connections_setup_connection(BusConnections *connections, DBusCo
     }
 
     // 设置监视函数
+    // 实际上是将当前connection的watch都添加到loop中去
     if (!dbus_connection_set_watch_functions(connection, add_connection_watch, remove_connection_watch,
                                              toggle_connection_watch, connection, NULL))
         goto oom;
@@ -2066,6 +2067,18 @@ BusContext *bus_transaction_get_context(BusTransaction *transaction)
  * Reserve enough memory to capture the given message if the
  * transaction goes through.
  */
+/**
+ * 捕获并处理总线事务中的消息
+ *
+ * @param transaction BusTransaction类型，表示当前的总线事务
+ * @param sender DBusConnection类型，表示发送消息的连接
+ * @param addressed_recipient DBusConnection类型，表示指定的接收消息的连接
+ * @param message DBusMessage类型，表示需要处理的消息
+ * @return 如果成功处理了消息，则返回TRUE，否则返回FALSE
+ * 
+ * 函数的作用是捕获并处理总线事务中的消息，根据是否有监视器决定是否需要处理消息。
+ * 如果有监视器，则将消息发送给所有匹配的接收者。
+ */
 dbus_bool_t bus_transaction_capture(BusTransaction *transaction, DBusConnection *sender,
                                     DBusConnection *addressed_recipient, DBusMessage *message)
 {
@@ -2075,31 +2088,39 @@ dbus_bool_t bus_transaction_capture(BusTransaction *transaction, DBusConnection 
     DBusList *recipients = NULL;
     dbus_bool_t ret = FALSE;
 
+    // 获取总线上下文中的连接列表
     connections = bus_context_get_connections(transaction->context);
 
-    /* shortcut: don't compose the message unless someone wants it */
+    // 快捷方式：如果没有监视器，则直接返回TRUE，不处理消息
+    // TODO:为啥？
     if (connections->monitors == NULL)
         return TRUE;
 
+    // 获取监视器匹配器
     mm = connections->monitor_matchmaker;
-    /* This is non-null if there has ever been a monitor - we don't GC it.
-   * There's little point, since there is up to 1 per process. */
+    /* 如果有过监视器，monitor_matchmaker就不会为NULL
+     * 我们不会对它进行垃圾回收，因为每个进程最多只有一个 */
     _dbus_assert(mm != NULL);
 
+    // 获取符合条件的接收者列表
     if (!bus_matchmaker_get_recipients(mm, connections, sender, addressed_recipient, message, &recipients))
         goto out;
 
+    // 遍历接收者列表，并将消息发送给每个接收者
     for (link = _dbus_list_get_first_link(&recipients); link != NULL;
          link = _dbus_list_get_next_link(&recipients, link)) {
         DBusConnection *recipient = link->data;
 
+        // 如果发送消息失败，则跳转到清理部分
         if (!bus_transaction_send(transaction, sender, recipient, message))
             goto out;
     }
 
+    // 设置返回值为TRUE，表示成功处理消息
     ret = TRUE;
 
 out:
+    // 清理接收者列表
     _dbus_list_clear(&recipients);
     return ret;
 }

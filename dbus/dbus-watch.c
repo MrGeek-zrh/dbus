@@ -298,7 +298,8 @@ dbus_bool_t _dbus_watch_list_set_functions(DBusWatchList *watch_list, DBusAddWat
             _dbus_verbose("Adding a %s watch on fd %" DBUS_POLLABLE_FORMAT " using newly-set add watch function\n",
                           watch_flags_to_string(dbus_watch_get_flags(link->data)), _dbus_pollable_printable(watch->fd));
 #endif
-
+            // data是connection，link-data是watch
+            // 实际上是将connection的watch都添加到loop中
             if (!(*add_function)(link->data, data)) {
                 /* remove it all again and return FALSE */
                 DBusList *link2;
@@ -687,6 +688,7 @@ dbus_bool_t dbus_watch_handle(DBusWatch *watch, unsigned int flags)
 
     _dbus_watch_sanitize_condition(watch, &flags);
 
+    // flags等于0是什么意思
     if (flags == 0) {
         _dbus_verbose("After sanitization, watch flags on fd %" DBUS_POLLABLE_FORMAT " were 0\n",
                       _dbus_pollable_printable(watch->fd));

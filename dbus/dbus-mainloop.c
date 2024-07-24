@@ -537,13 +537,25 @@ next:
     return TRUE;
 }
 
+/**
+ * 将DBusConnection添加到需要调度的列表中
+ *
+ * @param loop 事件循环对象，DBusLoop类型
+ * @param connection 需要添加到调度队列的连接，DBusConnection类型
+ * @return 如果成功将连接添加到调度队列，则返回TRUE，否则返回FALSE
+ */
 dbus_bool_t _dbus_loop_queue_dispatch(DBusLoop *loop, DBusConnection *connection)
 {
+    // 尝试将连接添加到需要调度的列表中
     if (_dbus_list_append(&loop->need_dispatch, connection)) {
+        // 如果添加成功，增加连接的引用计数
         dbus_connection_ref(connection);
+        // 返回TRUE表示成功
         return TRUE;
-    } else
+    } else {
+        // 如果添加失败，返回FALSE
         return FALSE;
+    }
 }
 
 /* Returns TRUE if we invoked any timeouts or have ready file
@@ -771,6 +783,7 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
             // 查找与该服务端文件描述符相关的监视器
             // 第一次调用时，这个应该就是服务端的fd
             // 但是这个fd是啥回事创建的呢？到目前为止，只创建过一个reload_pipe fd
+            // 任何客户端/服务进程连接过来，应该都是被同一个server监控？fd是3
             watches = _dbus_hash_table_lookup_pollable(loop->watches, ready_fds[i].fd);
 
             if (watches == NULL)

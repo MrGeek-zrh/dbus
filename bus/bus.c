@@ -1763,30 +1763,42 @@ dbus_bool_t bus_context_check_security_policy(BusContext *context, BusTransactio
     return TRUE;
 }
 
+/**
+ * 检查并更新所有监视对象的状态
+ *
+ * @param context BusContext类型，表示当前的总线上下文
+ * 
+ * 函数的作用是检查当前未完成连接的数量是否达到最大未完成连接的限制，
+ * 并根据检查结果启用或禁用所有监视对象。
+ */
 void bus_context_check_all_watches(BusContext *context)
 {
     DBusList *link;
     dbus_bool_t enabled = TRUE;
 
+    // 检查当前未完成连接的数量是否超过最大未完成连接的限制
     if (bus_connections_get_n_incomplete(context->connections) >= bus_context_get_max_incomplete_connections(context)) {
+        // 如果超过限制，则设置enabled为FALSE，表示需要禁用监视对象
         enabled = FALSE;
     }
 
+    // 如果监视对象的当前状态与期望状态相同，则不做任何操作，直接返回
     if (context->watches_enabled == enabled)
         return;
 
+    // 更新上下文中的监视对象启用状态
     context->watches_enabled = enabled;
 
+    // 遍历上下文中的所有服务器
     for (link = _dbus_list_get_first_link(&context->servers); link != NULL;
          link = _dbus_list_get_next_link(&context->servers, link)) {
-        /* A BusContext might contains several DBusServer (if there are
-       * several <listen> configuration items) and a DBusServer might
-       * contain several DBusWatch in its DBusWatchList (if getaddrinfo
-       * returns several addresses on a dual IPv4-IPv6 stack or if
-       * systemd passes several fds).
-       * We want to enable/disable them all.
-       */
+        /* 一个BusContext可能包含多个DBusServer（如果有多个<listen>配置项），
+         * 而一个DBusServer可能包含多个DBusWatch（如果getaddrinfo在双IPv4-IPv6栈上返回多个地址，
+         * 或者systemd传递了多个文件描述符）。
+         * 我们需要启用或禁用所有这些监视对象。
+         */
         DBusServer *server = link->data;
+        // 启用或禁用服务器上的所有监视对象
         _dbus_server_toggle_all_watches(server, enabled);
     }
 }

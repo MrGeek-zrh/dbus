@@ -286,6 +286,7 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
 
     // 为消息分配发送者
     if (bus_connection_is_active(connection)) {
+        // TODO:这个sender是客户端的名称吗？
         sender = bus_connection_get_name(connection);
         _dbus_assert(sender != NULL);
 
@@ -305,6 +306,9 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
     service_name = dbus_message_get_destination(message);
 
     // 处理发送到 bus driver 的消息
+    // org.freedesktop.DBus service
+    // service中有多个object，object中有多个interface，interface中有多个properties、method、signal
+    // 提供服务的服务进程通过system bus，向dbus-daemon注册服务
     if (service_name && strcmp(service_name, DBUS_SERVICE_DBUS) == 0) {
         if (!bus_transaction_capture(transaction, connection, NULL, message)) {
             BUS_SET_OOM(&error);

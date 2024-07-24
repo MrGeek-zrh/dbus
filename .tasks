@@ -1,4 +1,4 @@
 [build-and-restart-dbus-daemon]
-command=<root>/scripts/build.sh && <root>/scripts/check.sh && <root>/scripts/get_dbus_daemon_pid.sh
+command=<root>/scripts/build.sh && <root>/scripts/check.sh && <root>/scripts/get_dbus_daemon_pid.sh && <root>/scripts/attach.sh
 cwd=<root>
 output=quickfix

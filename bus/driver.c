@@ -3110,6 +3110,17 @@ oom:
     return FALSE;
 }
 
+/**
+ * 处理驱动消息
+ *
+ * @param connection DBusConnection类型，表示当前的连接
+ * @param transaction BusTransaction类型，表示当前的事务
+ * @param message DBusMessage类型，表示需要处理的消息
+ * @param error DBusError类型，表示错误信息
+ * @return 如果消息成功处理，则返回TRUE，否则返回FALSE
+ * 
+ * 函数的作用是根据不同的消息类型和接口调用相应的处理函数，处理总线驱动程序的消息。
+ */
 dbus_bool_t bus_driver_handle_message(DBusConnection *connection, BusTransaction *transaction, DBusMessage *message,
                                       DBusError *error)
 {
@@ -3119,21 +3130,22 @@ dbus_bool_t bus_driver_handle_message(DBusConnection *connection, BusTransaction
     dbus_bool_t found_interface = FALSE;
     dbus_bool_t is_canonical_path;
 
+    // 确保错误状态清除
     _DBUS_ASSERT_ERROR_IS_CLEAR(error);
 
+    // 如果消息是systemd的激活失败信号
     if (dbus_message_is_signal(message, "org.freedesktop.systemd1.Activator", "ActivationFailure")) {
         BusContext *context;
         DBusConnection *systemd;
 
-        /* This is a directed signal, not a method call, so the log message
-       * is a little weird (it talks about "calling" ActivationFailure),
-       * but it's close enough */
+        // 检查消息发送者是否有权限
         if (!bus_driver_check_caller_is_privileged(connection, transaction, message, error))
             return FALSE;
 
         context = bus_connection_get_context(connection);
         systemd = bus_driver_get_owner_of_name(connection, "org.freedesktop.systemd1");
 
+        // 如果发送者不是systemd连接，则忽略该消息
         if (systemd != connection) {
             const char *attacker;
 
@@ -3142,10 +3154,10 @@ dbus_bool_t bus_driver_handle_message(DBusConnection *connection, BusTransaction
                             "Ignoring forged ActivationFailure message from "
                             "connection %s (%s)",
                             attacker ? attacker : "(unauthenticated)", bus_connection_get_loginfo(connection));
-            /* ignore it */
             return TRUE;
         }
 
+        // 如果当前不使用systemd激活，则忽略该消息
         if (!bus_context_get_systemd_activation(context)) {
             bus_context_log(context, DBUS_SYSTEM_LOG_WARNING,
                             "Ignoring unexpected ActivationFailure message "
@@ -3153,28 +3165,34 @@ dbus_bool_t bus_driver_handle_message(DBusConnection *connection, BusTransaction
             return FALSE;
         }
 
+        // 处理systemd激活失败消息
         return dbus_activation_systemd_failure(bus_context_get_activation(context), message);
     }
 
+    // 如果消息不是方法调用，则忽略该消息
     if (dbus_message_get_type(message) != DBUS_MESSAGE_TYPE_METHOD_CALL) {
         _dbus_verbose("Driver got a non-method-call message, ignoring\n");
-        return TRUE; /* we just ignore this */
+        return TRUE;
     }
 
-    /* may be NULL, which means "any interface will do" */
+    // 获取消息的接口（可能为NULL，表示任意接口都可以）
     interface = dbus_message_get_interface(message);
 
+    // 确保消息的成员名称不为NULL
     _dbus_assert(dbus_message_get_member(message) != NULL);
 
+    // 获取消息的成员名称
     name = dbus_message_get_member(message);
 
     _dbus_verbose("Driver got a method call: %s\n", name);
 
-    /* security checks should have kept this from getting here */
+    // 安全检查应该已经防止了未发送者或成员名称为"Hello"的消息到达这里
     _dbus_assert(dbus_message_get_sender(message) != NULL || strcmp(name, "Hello") == 0);
 
+    // 检查消息是否具有标准的路径
     is_canonical_path = dbus_message_has_path(message, DBUS_PATH_DBUS);
 
+    // 遍历接口处理器，寻找匹配的接口和方法
     for (ih = interface_handlers; ih->name != NULL; ih++) {
         if (!(is_canonical_path || (ih->flags & INTERFACE_FLAG_ANY_PATH)))
             continue;
@@ -3190,18 +3208,21 @@ dbus_bool_t bus_driver_handle_message(DBusConnection *connection, BusTransaction
 
             _dbus_verbose("Found driver handler for %s\n", name);
 
+            // 检查方法是否需要权限
             if (mh->flags & METHOD_FLAG_PRIVILEGED) {
                 if (!bus_driver_check_caller_is_privileged(connection, transaction, message, error)) {
                     _DBUS_ASSERT_ERROR_IS_SET(error);
                     return FALSE;
                 }
             } else if (mh->flags & METHOD_FLAG_NO_CONTAINERS) {
+                // 检查方法是否不允许容器调用
                 if (!bus_driver_check_caller_is_not_container(connection, transaction, message, error)) {
                     _DBUS_ASSERT_ERROR_IS_SET(error);
                     return FALSE;
                 }
             }
 
+            // 检查方法是否只在标准路径上可用
             if (!(is_canonical_path || (mh->flags & METHOD_FLAG_ANY_PATH))) {
                 _DBUS_ASSERT_ERROR_IS_CLEAR(error);
                 dbus_set_error(error, DBUS_ERROR_ACCESS_DENIED,
@@ -3211,6 +3232,7 @@ dbus_bool_t bus_driver_handle_message(DBusConnection *connection, BusTransaction
                 return FALSE;
             }
 
+            // 检查消息的签名是否匹配
             if (!dbus_message_has_signature(message, mh->in_args)) {
                 _DBUS_ASSERT_ERROR_IS_CLEAR(error);
                 _dbus_verbose("Call to %s has wrong args (%s, expected %s)\n", name,
@@ -3222,6 +3244,7 @@ dbus_bool_t bus_driver_handle_message(DBusConnection *connection, BusTransaction
                 return FALSE;
             }
 
+            // 调用消息处理函数
             if ((*mh->handler)(connection, transaction, message, error)) {
                 _DBUS_ASSERT_ERROR_IS_CLEAR(error);
                 _dbus_verbose("Driver handler succeeded\n");
@@ -3236,6 +3259,7 @@ dbus_bool_t bus_driver_handle_message(DBusConnection *connection, BusTransaction
 
     _dbus_verbose("No driver handler for message \"%s\"\n", name);
 
+    // 设置错误信息，表示没有找到对应的接口或方法
     dbus_set_error(error, found_interface ? DBUS_ERROR_UNKNOWN_METHOD : DBUS_ERROR_UNKNOWN_INTERFACE,
                    "%s does not understand message %s", DBUS_SERVICE_DBUS, name);
 

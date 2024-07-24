@@ -32,22 +32,18 @@
 #include <dbus/dbus-test-tap.h>
 
 struct BusMatchRule {
-    int refcount; /**< reference count */
-
-    DBusConnection *matches_go_to; /**< Owner of the rule */
-
-    unsigned int flags; /**< BusMatchFlags */
-
-    int message_type;
-    char *interface;
-    char *member;
-    char *sender;
-    char *destination;
-    char *path;
-
-    unsigned int *arg_lens;
-    char **args;
-    int args_len;
+    int refcount; /**< 引用计数 */
+    DBusConnection *matches_go_to; /**< 规则的拥有者 */
+    unsigned int flags; /**< 匹配规则的标志 */
+    int message_type; /**< 消息类型 */
+    char *interface; /**< 消息接口 */
+    char *member; /**< 消息成员 */
+    char *sender; /**< 消息发送者 */
+    char *destination; /**< 消息接收者 */
+    char *path; /**< 消息路径 */
+    unsigned int *arg_lens; /**< 消息参数长度 */
+    char **args; /**< 消息参数 */
+    int args_len; /**< 消息参数的数量 */
 };
 
 #define BUS_MATCH_ARG_NAMESPACE 0x4000000u
@@ -979,12 +975,12 @@ out:
 }
 
 typedef struct RulePool RulePool;
-// TODO
+// TODO: 定义RulePool结构体
 struct RulePool {
-    /* Maps non-NULL interface names to non-NULL (DBusList **)s */
+    /* 将非NULL的接口名称映射到非NULL的(DBusList **) */
     DBusHashTable *rules_by_iface;
 
-    /* List of BusMatchRules which don't specify an interface */
+    /* 不指定接口的BusMatchRules列表 */
     DBusList *rules_without_iface;
 };
 
@@ -1530,212 +1526,247 @@ static dbus_bool_t str_has_prefix(const char *str, const char *prefix)
         return FALSE;
 }
 
+/**
+ * 检查消息是否匹配给定的规则
+ *
+ * @param rule 匹配规则 (BusMatchRule *)
+ * @param sender 消息发送者 (DBusConnection *)
+ * @param addressed_recipient 指定的接收者 (DBusConnection *)
+ * @param message 需要处理的消息 (DBusMessage *)
+ * @param already_matched 已经匹配的标志 (BusMatchFlags)
+ * @return 如果消息匹配规则，则返回TRUE，否则返回FALSE
+ * 
+ * 函数的作用是根据规则的各项条件检查消息是否匹配，并返回匹配结果。
+ */
 static dbus_bool_t match_rule_matches(BusMatchRule *rule, DBusConnection *sender, DBusConnection *addressed_recipient,
                                       DBusMessage *message, BusMatchFlags already_matched)
 {
+    // 初始化标志位，表示是否需要窃听
     dbus_bool_t wants_to_eavesdrop = FALSE;
+
+    // 保存需要匹配的规则标志位
     int flags;
 
-    /* All features of the match rule are AND'd together,
-   * so FALSE if any of them don't match.
-   */
+    // 规则的所有特性都是与操作的，因此如果任何一个不匹配，则返回FALSE
 
-    /* sender/addressed_recipient of #NULL may mean bus driver,
-   * or for addressed_recipient may mean a message with no
-   * specific recipient (i.e. a signal)
-   */
+    // sender/addressed_recipient 为NULL可能表示总线驱动程序，
+    // 或者对于addressed_recipient可能表示没有特定接收者的消息（例如信号）
 
-    /* Don't bother re-matching features we've already checked implicitly. */
+    // 不要重新匹配已经隐式检查过的特性
     flags = rule->flags & (~already_matched);
 
+    // 检查是否需要窃听
     if (flags & BUS_MATCH_CLIENT_IS_EAVESDROPPING)
         wants_to_eavesdrop = TRUE;
 
+    // 检查消息类型是否匹配
     if (flags & BUS_MATCH_MESSAGE_TYPE) {
+        // 确保规则中的消息类型有效
         _dbus_assert(rule->message_type != DBUS_MESSAGE_TYPE_INVALID);
 
+        // 如果消息类型不匹配，则返回FALSE
         if (rule->message_type != dbus_message_get_type(message))
             return FALSE;
     }
 
+    // 检查消息接口是否匹配
     if (flags & BUS_MATCH_INTERFACE) {
         const char *iface;
 
+        // 确保规则中的接口不为NULL
         _dbus_assert(rule->interface != NULL);
 
+        // 获取消息的接口
         iface = dbus_message_get_interface(message);
+
+        // 如果消息没有接口，则返回FALSE
         if (iface == NULL)
             return FALSE;
 
+        // 如果接口不匹配，则返回FALSE
         if (strcmp(iface, rule->interface) != 0)
             return FALSE;
     }
 
+    // 检查消息成员是否匹配
     if (flags & BUS_MATCH_MEMBER) {
         const char *member;
 
+        // 确保规则中的成员不为NULL
         _dbus_assert(rule->member != NULL);
 
+        // 获取消息的成员
         member = dbus_message_get_member(message);
+
+        // 如果消息没有成员，则返回FALSE
         if (member == NULL)
             return FALSE;
 
+        // 如果成员不匹配，则返回FALSE
         if (strcmp(member, rule->member) != 0)
             return FALSE;
     }
 
+    // 检查消息发送者是否匹配
     if (flags & BUS_MATCH_SENDER) {
+        // 确保规则中的发送者不为NULL
         _dbus_assert(rule->sender != NULL);
 
         if (sender == NULL) {
+            // 如果发送者为NULL，检查是否是总线服务
             if (strcmp(rule->sender, DBUS_SERVICE_DBUS) != 0)
                 return FALSE;
         } else {
+            // 检查发送者是否匹配规则中的发送者
             if (!connection_is_primary_owner(sender, rule->sender))
                 return FALSE;
         }
     }
 
-    /* Note: this part is relevant for eavesdropper rules:
-   * Two cases:
-   * 1) rule has a destination to be matched
-   *   (flag BUS_MATCH_DESTINATION present). Rule will match if:
-   *   - rule->destination matches the addressed_recipient
-   *   AND
-   *   - wants_to_eavesdrop=TRUE
-   *
-   *   Note: (the case in which addressed_recipient is the actual rule owner
-   *   is handled elsewere in dispatch.c:bus_dispatch_matches().
-   *
-   * 2) rule has no destination. Rule will match if:
-   *    - message has no specified destination (ie broadcasts)
-   *      (Note: this will rule out unicast method calls and unicast signals,
-   *      fixing FDO#269748)
-   *    OR
-   *    - wants_to_eavesdrop=TRUE (destination-catch-all situation)
-   */
+    // 检查消息目标是否匹配
     if (flags & BUS_MATCH_DESTINATION) {
         const char *destination;
 
+        // 确保规则中的目标不为NULL
         _dbus_assert(rule->destination != NULL);
 
+        // 获取消息的目标
         destination = dbus_message_get_destination(message);
+
+        // 如果消息没有目标，则返回FALSE
         if (destination == NULL)
-            /* broadcast, but this rule specified a destination: no match */
             return FALSE;
 
-        /* rule owner does not intend to eavesdrop: we'll deliver only msgs
-       * directed to it, NOT MATCHING */
+        // 如果不需要窃听，则返回FALSE
         if (!wants_to_eavesdrop)
             return FALSE;
 
         if (addressed_recipient == NULL) {
-            /* If the message is going to be delivered to the dbus-daemon
-           * itself, its destination will be "org.freedesktop.DBus",
-           * which we again match against the rule (see bus_dispatch()
-           * in bus/dispatch.c, which checks for o.fd.DBus first).
-           *
-           * If we are monitoring and we don't know who is going to receive
-           * the message (for instance because they haven't been activated yet),
-           * assume they will own the requested destination name and no other,
-           * and match the rule's destination against that.
-           */
+            // 如果没有特定接收者，检查目标是否匹配
             if (strcmp(rule->destination, destination) != 0)
                 return FALSE;
         } else {
+            // 检查接收者是否匹配目标
             if (!connection_is_primary_owner(addressed_recipient, rule->destination))
                 return FALSE;
         }
-    } else { /* no destination in rule */
+    } else {
+        // 没有指定目标的规则
         dbus_bool_t msg_is_broadcast;
 
+        // 确保规则中的目标为NULL
         _dbus_assert(rule->destination == NULL);
 
+        // 检查消息是否为广播
         msg_is_broadcast = (dbus_message_get_destination(message) == NULL);
 
+        // 如果不需要窃听且消息不是广播，则返回FALSE
         if (!wants_to_eavesdrop && !msg_is_broadcast)
             return FALSE;
-
-        /* if we are here rule owner intends to eavesdrop
-         * OR
-         * message is being broadcasted */
     }
 
+    // 检查消息路径是否匹配
     if (flags & BUS_MATCH_PATH) {
         const char *path;
 
+        // 确保规则中的路径不为NULL
         _dbus_assert(rule->path != NULL);
 
+        // 获取消息的路径
         path = dbus_message_get_path(message);
+
+        // 如果消息没有路径，则返回FALSE
         if (path == NULL)
             return FALSE;
 
+        // 如果路径不匹配，则返回FALSE
         if (strcmp(path, rule->path) != 0)
             return FALSE;
     }
 
+    // 检查消息路径命名空间是否匹配
     if (flags & BUS_MATCH_PATH_NAMESPACE) {
         const char *path;
         int len;
 
+        // 确保规则中的路径不为NULL
         _dbus_assert(rule->path != NULL);
 
+        // 获取消息的路径
         path = dbus_message_get_path(message);
+
+        // 如果消息没有路径，则返回FALSE
         if (path == NULL)
             return FALSE;
 
+        // 如果路径前缀不匹配，则返回FALSE
         if (!str_has_prefix(path, rule->path))
             return FALSE;
 
         len = strlen(rule->path);
 
-        /* Check that the actual argument is within the expected
-       * namespace, rather than just starting with that string,
-       * by checking that the matched prefix is followed by a '/'
-       * or the end of the path.
-       *
-       * Special case: the only valid path of length 1, "/",
-       * matches everything.
-       */
+        // 检查实际参数是否在预期的命名空间内，而不仅仅是以该字符串开头，
+        // 通过检查匹配的前缀是否后跟 '/' 或路径的结尾。
+        // 特殊情况：唯一有效的长度为1的路径 "/" 匹配所有内容。
         if (len > 1 && path[len] != '\0' && path[len] != '/')
             return FALSE;
     }
 
+    // 检查消息参数是否匹配
     if (flags & BUS_MATCH_ARGS) {
         int i;
         DBusMessageIter iter;
 
+        // 确保规则中的参数不为NULL
         _dbus_assert(rule->args != NULL);
 
+        // 初始化消息迭代器
         dbus_message_iter_init(message, &iter);
 
         i = 0;
         while (i < rule->args_len) {
+            // 遍历规则中的参数
             int current_type;
             const char *expected_arg;
             int expected_length;
             dbus_bool_t is_path, is_namespace;
 
+            // 获取规则中的参数
             expected_arg = rule->args[i];
+
+            // 获取参数长度
             expected_length = rule->arg_lens[i] & ~BUS_MATCH_ARG_FLAGS;
+
+            // 检查是否是路径
             is_path = (rule->arg_lens[i] & BUS_MATCH_ARG_IS_PATH) != 0;
+
+            // 检查是否是命名空间
             is_namespace = (rule->arg_lens[i] & BUS_MATCH_ARG_NAMESPACE) != 0;
 
+            // 获取消息参数的类型
             current_type = dbus_message_iter_get_arg_type(&iter);
 
+            // 如果期望的参数不为NULL
             if (expected_arg != NULL) {
                 const char *actual_arg;
                 int actual_length;
 
+                // 检查消息参数类型是否匹配
                 if (current_type != DBUS_TYPE_STRING && (!is_path || current_type != DBUS_TYPE_OBJECT_PATH))
                     return FALSE;
 
                 actual_arg = NULL;
+
+                // 获取消息参数的值
                 dbus_message_iter_get_basic(&iter, &actual_arg);
+
+                // 确保消息参数值不为NULL
                 _dbus_assert(actual_arg != NULL);
 
+                // 获取实际参数长度
                 actual_length = strlen(actual_arg);
 
+                // 如果是路径，检查路径是否匹配
                 if (is_path) {
                     if (actual_length < expected_length && actual_arg[actual_length - 1] != '/')
                         return FALSE;
@@ -1746,35 +1777,25 @@ static dbus_bool_t match_rule_matches(BusMatchRule *rule, DBusConnection *sender
                     if (memcmp(actual_arg, expected_arg, MIN(actual_length, expected_length)) != 0)
                         return FALSE;
                 } else if (is_namespace) {
+                    // 如果是命名空间，检查命名空间是否匹配
                     if (expected_length > actual_length)
                         return FALSE;
-
-                    /* If the actual argument doesn't start with the expected
-                   * namespace, then we don't match.
-                   */
                     if (memcmp(expected_arg, actual_arg, expected_length) != 0)
                         return FALSE;
 
                     if (expected_length < actual_length) {
-                        /* Check that the actual argument is within the expected
-                       * namespace, rather than just starting with that string,
-                       * by checking that the matched prefix ends in a '.'.
-                       *
-                       * This doesn't stop "foo.bar." matching "foo.bar..baz"
-                       * which is an invalid namespace, but at some point the
-                       * daemon can't cover up for broken services.
-                       */
                         if (actual_arg[expected_length] != '.')
                             return FALSE;
                     }
-                    /* otherwise we had an exact match. */
                 } else {
+                    // 检查参数是否匹配
                     if (expected_length != actual_length || memcmp(expected_arg, actual_arg, expected_length) != 0)
                         return FALSE;
                 }
             }
 
             if (current_type != DBUS_TYPE_INVALID)
+                // 移动到下一个消息参数
                 dbus_message_iter_next(&iter);
 
             ++i;
@@ -1784,23 +1805,39 @@ static dbus_bool_t match_rule_matches(BusMatchRule *rule, DBusConnection *sender
     return TRUE;
 }
 
+/**
+ * 从规则列表中获取符合条件的消息接收者
+ *
+ * @param rules 规则列表 (DBusList **)
+ * @param sender 消息发送者 (DBusConnection *)
+ * @param addressed_recipient 指定的接收者 (DBusConnection *)
+ * @param message 需要处理的消息 (DBusMessage *)
+ * @param recipients_p 用于存储接收者列表的指针 (DBusList **)
+ * @return 如果成功获取接收者列表，则返回TRUE，否则返回FALSE
+ * 
+ * 函数的作用是遍历规则列表，根据匹配条件查找符合的接收者，并将其添加到接收者列表中。
+ */
 static dbus_bool_t get_recipients_from_list(DBusList **rules, DBusConnection *sender,
                                             DBusConnection *addressed_recipient, DBusMessage *message,
                                             DBusList **recipients_p)
 {
     DBusList *link;
 
+    // 如果规则列表为空，则直接返回TRUE
     if (rules == NULL)
         return TRUE;
 
+    // 获取规则列表的第一个链接
     link = _dbus_list_get_first_link(rules);
     while (link != NULL) {
         BusMatchRule *rule;
 
+        // 获取当前链接的数据，即匹配规则
         rule = link->data;
 
 #ifdef DBUS_ENABLE_VERBOSE_MODE
         {
+            // 将匹配规则转换为字符串，用于调试输出
             char *s = match_rule_to_string(rule);
 
             _dbus_verbose("Checking whether message matches rule %s for connection %p\n", s ? s : "nomem",
@@ -1809,11 +1846,12 @@ static dbus_bool_t get_recipients_from_list(DBusList **rules, DBusConnection *se
         }
 #endif
 
+        // 检查消息是否匹配当前规则
         if (match_rule_matches(rule, sender, addressed_recipient, message,
                                BUS_MATCH_MESSAGE_TYPE | BUS_MATCH_INTERFACE)) {
             _dbus_verbose("Rule matched\n");
 
-            /* Append to the list if we haven't already */
+            // 如果该连接还未接收该消息，则将其添加到接收者列表中
             if (bus_connection_mark_stamp(rule->matches_go_to)) {
                 if (!_dbus_list_append(recipients_p, rule->matches_go_to))
                     return FALSE;
@@ -1822,12 +1860,26 @@ static dbus_bool_t get_recipients_from_list(DBusList **rules, DBusConnection *se
             }
         }
 
+        // 获取规则列表的下一个链接
         link = _dbus_list_get_next_link(rules, link);
     }
 
     return TRUE;
 }
 
+/**
+ * 获取符合条件的消息接收者列表
+ *
+ * @param matchmaker BusMatchmaker类型，表示匹配器
+ * @param connections BusConnections类型，表示当前的连接列表
+ * @param sender DBusConnection类型，表示消息发送者
+ * @param addressed_recipient DBusConnection类型，表示指定的接收者（可能为NULL）
+ * @param message DBusMessage类型，表示需要处理的消息
+ * @param recipients_p DBusList指针的指针，用于存储接收者列表
+ * @return 如果成功获取接收者列表，则返回TRUE，否则返回FALSE
+ * 
+ * 函数的作用是根据消息的类型和接口，从匹配器中获取符合条件的消息接收者列表。
+ */
 dbus_bool_t bus_matchmaker_get_recipients(BusMatchmaker *matchmaker, BusConnections *connections,
                                           DBusConnection *sender, DBusConnection *addressed_recipient,
                                           DBusMessage *message, DBusList **recipients_p)
@@ -1836,45 +1888,52 @@ dbus_bool_t bus_matchmaker_get_recipients(BusMatchmaker *matchmaker, BusConnecti
     const char *interface;
     DBusList **neither, **just_type, **just_iface, **both;
 
+    // 确保接收者列表指针初始化为空
     _dbus_assert(*recipients_p == NULL);
 
-    /* This avoids sending same message to the same connection twice.
-   * Purpose of the stamp instead of a bool is to avoid iterating over
-   * all connections resetting the bool each time.
-   */
+    /* 通过增加时间戳来避免将相同消息发送给同一个连接两次
+     * 使用时间戳而不是布尔值是为了避免每次都要遍历所有连接来重置布尔值
+     */
     bus_connections_increment_stamp(connections);
 
-    /* addressed_recipient is already receiving the message, don't add to list.
-   * NULL addressed_recipient means either bus driver, or this is a signal
-   * and thus lacks a specific addressed_recipient.
-   */
+    /* addressed_recipient已经在接收消息了，不需要添加到列表中
+     * NULL addressed_recipient表示总线驱动程序或这是一个没有指定接收者的信号
+     */
     if (addressed_recipient != NULL)
         bus_connection_mark_stamp(addressed_recipient);
 
+    // 获取消息的类型和接口
     type = dbus_message_get_type(message);
     interface = dbus_message_get_interface(message);
 
+    // 获取匹配任意消息类型和接口的规则
     neither = bus_matchmaker_get_rules(matchmaker, DBUS_MESSAGE_TYPE_INVALID, NULL, FALSE);
     just_type = just_iface = both = NULL;
 
+    // 如果接口不为空，获取匹配任意消息类型和特定接口的规则
     if (interface != NULL)
         just_iface = bus_matchmaker_get_rules(matchmaker, DBUS_MESSAGE_TYPE_INVALID, interface, FALSE);
 
+    // 如果消息类型有效，获取匹配特定消息类型和任意接口的规则
     if (type > DBUS_MESSAGE_TYPE_INVALID && type < DBUS_NUM_MESSAGE_TYPES) {
         just_type = bus_matchmaker_get_rules(matchmaker, type, NULL, FALSE);
 
+        // 如果接口也不为空，获取匹配特定消息类型和特定接口的规则
         if (interface != NULL)
             both = bus_matchmaker_get_rules(matchmaker, type, interface, FALSE);
     }
 
+    // 从各个规则列表中获取接收者，并将它们添加到接收者列表中
     if (!(get_recipients_from_list(neither, sender, addressed_recipient, message, recipients_p) &&
           get_recipients_from_list(just_iface, sender, addressed_recipient, message, recipients_p) &&
           get_recipients_from_list(just_type, sender, addressed_recipient, message, recipients_p) &&
           get_recipients_from_list(both, sender, addressed_recipient, message, recipients_p))) {
+        // 如果获取接收者失败，清空接收者列表并返回FALSE
         _dbus_list_clear(recipients_p);
         return FALSE;
     }
 
+    // 成功获取接收者列表，返回TRUE
     return TRUE;
 }
 
