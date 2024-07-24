@@ -776,6 +776,8 @@ static dbus_bool_t pending_unix_fds_timeout_cb(void *data)
  */
 dbus_bool_t bus_connections_setup_connection(BusConnections *connections, DBusConnection *connection)
 {
+    // BusConnectionData用来存放非通用的BusConnection数据
+    // 用来拓展BusConnection
     BusConnectionData *d = NULL;
     DBusError error;
 
@@ -823,8 +825,7 @@ dbus_bool_t bus_connections_setup_connection(BusConnections *connections, DBusCo
         goto error;
     }
 
-    // 设置监视函数
-    // 实际上是将当前connection的watch都添加到loop中去
+    // 设置监视器操作函数
     if (!dbus_connection_set_watch_functions(connection, add_connection_watch, remove_connection_watch,
                                              toggle_connection_watch, connection, NULL))
         goto oom;
@@ -846,12 +847,14 @@ dbus_bool_t bus_connections_setup_connection(BusConnections *connections, DBusCo
     if (d->link_in_connection_list == NULL)
         goto oom;
 
-    // 将连接添加到分发器
+    // 将connection拥有的过滤器也添加到总的过滤规则中
     if (!bus_dispatch_add_connection(connection))
         goto oom;
 
     // 检查并处理分发状态
     if (dbus_connection_get_dispatch_status(connection) != DBUS_DISPATCH_COMPLETE) {
+        /// 当前这个连接还没有处理完
+        //  * 将DBusConnection添加到需要调度的列表中
         if (!_dbus_loop_queue_dispatch(bus_context_get_loop(connections->context), connection)) {
             bus_dispatch_remove_connection(connection);
             goto oom;
@@ -943,39 +946,56 @@ error:
     return FALSE;
 }
 
+/**
+ * 检查并处理未完成的连接是否已超时
+ *
+ * @param connections 指向 BusConnections 对象的指针
+ * 
+ * 该函数检查未完成的连接是否已超过认证超时，如果超过则关闭连接。
+ * 如果有未超时的连接，更新下一次检查的时间间隔。
+ */
 void bus_connections_expire_incomplete(BusConnections *connections)
 {
+    // 初始化下一个检查时间间隔为 -1（表示无间隔）
     int next_interval;
 
     next_interval = -1;
 
+    // 如果存在未完成的连接
     if (connections->incomplete != NULL) {
         long tv_sec, tv_usec;
         DBusList *link;
         int auth_timeout;
 
+        // 获取当前单调时间（秒和微秒）
         _dbus_get_monotonic_time(&tv_sec, &tv_usec);
+        // 获取上下文中的认证超时时间
         auth_timeout = bus_context_get_auth_timeout(connections->context);
 
+        // 获取未完成连接列表的第一个链接
         link = _dbus_list_get_first_link(&connections->incomplete);
         while (link != NULL) {
+            // 获取下一个链接
             DBusList *next = _dbus_list_get_next_link(&connections->incomplete, link);
             DBusConnection *connection;
             BusConnectionData *d;
             double elapsed;
 
+            // 获取当前链接中的连接对象
             connection = link->data;
 
+            // 获取连接对象的 BusConnectionData
             d = BUS_CONNECTION_DATA(connection);
 
+            // 确保连接数据不为空
             _dbus_assert(d != NULL);
 
+            // 计算自连接开始到现在的时间差（毫秒）
             elapsed = ELAPSED_MILLISECONDS_SINCE(d->connection_tv_sec, d->connection_tv_usec, tv_sec, tv_usec);
 
+            // 如果超过认证超时时间
             if (elapsed >= (double)auth_timeout) {
-                /* Unfortunately, we can't identify the connection: it doesn't
-               * have a unique name yet, we don't know its uid/pid yet,
-               * and so on. */
+                // 记录日志，关闭连接
                 bus_context_log(connections->context, DBUS_SYSTEM_LOG_WARNING,
                                 "Connection has not authenticated soon enough, closing it "
                                 "(auth_timeout=%dms, elapsed: %.0fms)",
@@ -984,17 +1004,20 @@ void bus_connections_expire_incomplete(BusConnections *connections)
                 _dbus_verbose("Timing out authentication for connection %p\n", connection);
                 dbus_connection_close(connection);
             } else {
-                /* We can end the loop, since the connections are in oldest-first order */
+                // 未超时，计算下一个检查时间间隔
                 next_interval = ((double)auth_timeout) - elapsed;
                 _dbus_verbose("Connection %p authentication expires in %d milliseconds\n", connection, next_interval);
 
+                // 由于连接是按最早连接排序，因此可以结束循环
                 break;
             }
 
+            // 移动到下一个链接
             link = next;
         }
     }
 
+    // 设置超时检查的间隔
     bus_expire_timeout_set_interval(connections->expire_timeout, next_interval);
 }
 

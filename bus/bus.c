@@ -224,7 +224,7 @@ static void new_connection_callback(DBusServer *server, DBusConnection *new_conn
  *
  * 该函数用于将一个新的传入连接添加到 `BusContext`，并配置连接的各种限制和属性。
  *
- * @param context 指向 BusContext 的指针，表示 DBus 守护进程的上下文。
+ * @param context 指向 BusContext 的指针，表示 DBus 守护进程的上下文。这个context 是从server 的 new_connection_handler_data获取到的
  * @param new_connection 指向新的 DBusConnection 的指针，表示传入的连接。
  * @return 如果添加和配置成功，返回 TRUE；如果发生错误，返回 FALSE。
  */

@@ -22,6 +22,7 @@
  *
  */
 
+#include "bus/bus.h"
 #include "dbus/dbus-protocol.h"
 #include "dbus/dbus-sysdeps.h"
 #include <config.h>
@@ -1686,63 +1687,37 @@ err:
     return NULL;
 }
 
-static dbus_bool_t save_service_status()
+static BusContext *get_service_bus_context(BusTransaction *transaction)
 {
-#if 0
-    // 用于存储各种运行时操作参数的结构体
-    struct runtime_container_status_info real_status = { 0 };
+    return NULL;
+}
 
-    // 导出服务配置到指定路径
-    if (prepare_checkpoint_export(cont, checkpoint_target_path) != 0) {
-        ret = -1;
-        ERROR("Failed to write config dumps for container %s", id);
-        goto clean_dump_file_out;
-    }
+static dbus_bool_t save_connection_context_to_file(DBusConnection *service_bus_connection,
+                                                   BusContext *service_bus_context, const char *file_path)
+{
+    return TRUE;
+}
 
+/*
+ * 需要保存的应该是以下内容：
+ * 1. DBusTransport:对应的Connection中包含transport了，所以其实并不需要额外保存
+ * 2. DBusConnection
+ * 3. BusContext
+    // 1. 获取到服务进程拥有的BusConnection
+    // 2. 获取到服务进程对应的BusContext
+    // 3. save 这两个结构体
+ * */
+static dbus_bool_t save_service_status(char *service_name, char *file_path, DBusConnection *connection,
+                                       BusTransaction *transaction)
+{
+    // 1. 获取到服务进程对应的BusContext
+    BusContext *service_bus_context;
+    service_bus_context = get_service_bus_context(transaction);
 
-    // 导出检查点数据
-    if (export_checkpoint(request, cont, checkpoint_target_path) != 0) {
-        ret = -1;
-        ERROR("Failed to write file system changes of container %s", id);
-        goto clean_dump_file_out;
-    }
-
-unpause_out:
-    // 设置获取容器状态的参数
-    status_params.rootpath = cont->root_path;
-    status_params.state = cont->state_path;
-    if (cont->common_config->sandbox_info != NULL) {
-        status_params.task_address = cont->common_config->sandbox_info->task_address;
-    }
-
-    // 获取容器状态
-    if (runtime_status(id, cont->runtime, &status_params, &real_status) != 0) {
-        ERROR("Failed to get container status:%s", id);
-        ret = -1;
-    }
-
-    // 如果容器处于暂停状态，则恢复容器
-    if (real_status.status == RUNTIME_CONTAINER_STATUS_PAUSED) {
-        resume_params.rootpath = cont->root_path;
-        resume_params.state = cont->state_path;
-        if (runtime_resume(id, cont->runtime, &resume_params)) {
-            ERROR("Failed to resume container:%s", id);
-            ret = -1;
-        }
-    }
-
-    // 将容器状态保存到磁盘
-    if (container_state_to_disk(cont) != 0) {
-        ERROR("Failed to save container \"%s\" to disk", id);
-        ret = -1;
-    }
-
-unlock_out:
-    // 在返回前解锁容器
-    container_unlock(cont);
+    // 2. save 这两个结构体
+    save_connection_context_to_file(connection, service_bus_context, file_path);
 
     return TRUE;
-#endif
 }
 
 // 定义 exec_with_privilege 函数
@@ -1856,7 +1831,8 @@ static dbus_uint32_t getinode(dbus_pid_t pid)
 // 5. 保存服务再dbus-daemon中的状态
 // 6. 使用exec执行criu指令
 */
-static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbose)
+static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbose, DBusConnection *connection,
+                              BusTransaction *transaction)
 {
     //1. 检查系统是否支持criu
     if (!criu_ok())
@@ -1884,7 +1860,9 @@ static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbo
     printf("gen_arg pass\n");
 
     // 5. 保存服务再dbus-daemon中的状态
-    if (!save_service_status())
+    char *service_name = "com.example.SystemService";
+    char *file_path = "/tmp/criu/status.json";
+    if (!save_service_status(service_name, file_path, connection, transaction))
         return FALSE;
     printf("save_service_status pass\n");
 
@@ -1943,7 +1921,7 @@ static dbus_bool_t bus_driver_handle_checkpoint(DBusConnection *connection, BusT
     // 获取进程id成功，接下来开始进程checkpoint
     char *directory = "/tmp/criu";
     dbus_bool_t verbose = TRUE;
-    if (!checkpoint(pid, directory, verbose)) {
+    if (!checkpoint(pid, directory, verbose, connection, transaction)) {
         dbus_set_error(error, DBUS_ERROR_CHECKPOINT, "Could not checkpoint service '%s'", service);
         goto failed;
     }
@@ -1979,6 +1957,10 @@ failed:
 }
 
 // directory 是checkpoint文件所在的目录，service是服务名称
+/* 1. 读取dump文件中和服务程序的内部状态有关的配置文件，重新还原出服务进程在dbus-daemon中的context
+ * 2. 读取criu img文件，还原进程
+ *
+ * */
 static dbus_bool_t restore(const char *service, const char *directory, dbus_bool_t verbose)
 {
     return TRUE;

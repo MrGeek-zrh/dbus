@@ -38,31 +38,60 @@ typedef struct DBusTransportVTable DBusTransportVTable;
  * The virtual table that must be implemented to
  * create a new kind of transport.
  */
+/**
+ * DBusTransportVTable 结构体定义了一组用于处理 DBusTransport 对象的函数指针。
+ * 这些函数指针定义了与传输相关的操作，如初始化、读写、断开连接等。
+ */
 struct DBusTransportVTable {
     void (*finalize)(DBusTransport *transport);
-    /**< The finalize method must free the transport. */
+    /**< finalize 方法必须释放 transport 对象的内存。
+     *
+     * @param transport 指向 DBusTransport 对象的指针
+     */
 
     dbus_bool_t (*handle_watch)(DBusTransport *transport, DBusWatch *watch, unsigned int flags);
-    /**< The handle_watch method handles reading/writing
-   * data as indicated by the flags.
-   */
+    /**< handle_watch 方法根据 flags 指示的读/写操作处理数据。
+     *
+     * @param transport 指向 DBusTransport 对象的指针
+     * @param watch 指向 DBusWatch 对象的指针
+     * @param flags 标志，指示读/写操作
+     * @return 如果处理成功则返回 TRUE，否则返回 FALSE
+     */
 
     void (*disconnect)(DBusTransport *transport);
-    /**< Disconnect this transport. */
+    /**< disconnect 方法断开此传输。
+     *
+     * @param transport 指向 DBusTransport 对象的指针
+     */
 
     dbus_bool_t (*connection_set)(DBusTransport *transport);
-    /**< Called when transport->connection has been filled in */
+    /**< 当 transport->connection 已填充时调用。
+     *
+     * @param transport 指向 DBusTransport 对象的指针
+     * @return 如果设置成功则返回 TRUE，否则返回 FALSE
+     */
 
     void (*do_iteration)(DBusTransport *transport, unsigned int flags, int timeout_milliseconds);
-    /**< Called to do a single "iteration" (block on select/poll
-   * followed by reading or writing data).
-   */
+    /**< 执行一次迭代（阻塞在 select/poll 上，然后读取或写入数据）。
+     *
+     * @param transport 指向 DBusTransport 对象的指针
+     * @param flags 标志，指示操作类型
+     * @param timeout_milliseconds 超时时间，单位为毫秒
+     */
 
     void (*live_messages_changed)(DBusTransport *transport);
-    /**< Outstanding messages counter changed */
+    /**< 未处理消息计数器发生变化时调用。
+     *
+     * @param transport 指向 DBusTransport 对象的指针
+     */
 
     dbus_bool_t (*get_socket_fd)(DBusTransport *transport, DBusSocket *fd_p);
-    /**< Get socket file descriptor */
+    /**< 获取套接字文件描述符。
+     *
+     * @param transport 指向 DBusTransport 对象的指针
+     * @param fd_p 指向 DBusSocket 对象的指针
+     * @return 如果获取成功则返回 TRUE，否则返回 FALSE
+     */
 };
 
 /**

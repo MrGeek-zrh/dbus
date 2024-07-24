@@ -437,18 +437,30 @@ out:
 }
 
 /* returns false on oom */
+/**
+ * 进行写操作
+ *
+ * @param transport 指向 DBusTransport 对象的指针
+ * @return 如果处理成功则返回 TRUE，否则返回 FALSE
+ *
+ * 函数的作用是处理传输层的写操作，根据不同的条件写入数据。
+ */
 static dbus_bool_t do_writing(DBusTransport *transport)
 {
+    // 总写入字节数
     int total;
+    // 将传输对象转换为 DBusTransportSocket 类型
     DBusTransportSocket *socket_transport = (DBusTransportSocket *)transport;
+    // 内存不足标志
     dbus_bool_t oom;
 
-    /* No messages without authentication! */
+    // 在没有认证的情况下不进行任何写操作
     if (!_dbus_transport_try_to_authenticate(transport)) {
         _dbus_verbose("Not authenticated, not writing anything\n");
         return TRUE;
     }
 
+    // 如果传输已断开，不进行任何写操作
     if (transport->disconnected) {
         _dbus_verbose("Not connected, not writing anything\n");
         return TRUE;
@@ -460,9 +472,12 @@ static dbus_bool_t do_writing(DBusTransport *transport)
                   _dbus_socket_printable(socket_transport->fd));
 #endif
 
+    // 初始化内存不足标志为 FALSE
     oom = FALSE;
+    // 初始化总写入字节数为 0
     total = 0;
 
+    // 当传输未断开且有消息要发送时进行循环
     while (!transport->disconnected && _dbus_connection_has_messages_to_send_unlocked(transport->connection)) {
         int bytes_written;
         DBusMessage *message;
@@ -472,29 +487,34 @@ static dbus_bool_t do_writing(DBusTransport *transport)
         int total_bytes_to_write;
         int saved_errno;
 
+        // 如果总写入字节数超过每次迭代的最大字节数限制，退出循环
         if (total > socket_transport->max_bytes_written_per_iteration) {
             _dbus_verbose("%d bytes exceeds %d bytes written per iteration, returning\n", total,
                           socket_transport->max_bytes_written_per_iteration);
             goto out;
         }
 
+        // 获取要发送的消息
         message = _dbus_connection_get_message_to_send(transport->connection);
         _dbus_assert(message != NULL);
         dbus_message_lock(message);
 
 #if 0
-      _dbus_verbose ("writing message %p\n", message);
+        _dbus_verbose("writing message %p\n", message);
 #endif
 
+        // 获取消息的网络数据（头部和主体）
         _dbus_message_get_network_data(message, &header, &body);
 
+        // 获取头部和主体的长度
         header_len = _dbus_string_get_length(header);
         body_len = _dbus_string_get_length(body);
 
+        // 如果需要对数据进行编码
         if (_dbus_auth_needs_encoding(transport->auth)) {
-            /* Does fd passing even make sense with encoded data? */
             _dbus_assert(!DBUS_TRANSPORT_CAN_SEND_UNIX_FD(transport));
 
+            // 如果未编码的输出长度为 0，进行编码
             if (_dbus_string_get_length(&socket_transport->encoded_outgoing) == 0) {
                 if (!_dbus_auth_encode_data(transport->auth, header, &socket_transport->encoded_outgoing)) {
                     oom = TRUE;
@@ -511,8 +531,8 @@ static dbus_bool_t do_writing(DBusTransport *transport)
             total_bytes_to_write = _dbus_string_get_length(&socket_transport->encoded_outgoing);
 
 #if 0
-          _dbus_verbose ("encoded message is %d bytes\n",
-                         total_bytes_to_write);
+            _dbus_verbose("encoded message is %d bytes\n",
+                          total_bytes_to_write);
 #endif
 
             bytes_written = _dbus_write_socket(socket_transport->fd, &socket_transport->encoded_outgoing,
@@ -520,16 +540,16 @@ static dbus_bool_t do_writing(DBusTransport *transport)
                                                total_bytes_to_write - socket_transport->message_bytes_written);
             saved_errno = _dbus_save_socket_errno();
         } else {
+            // 不需要编码，直接写入
             total_bytes_to_write = header_len + body_len;
 
 #if 0
-          _dbus_verbose ("message is %d bytes\n",
-                         total_bytes_to_write);
+            _dbus_verbose("message is %d bytes\n",
+                          total_bytes_to_write);
 #endif
 
 #ifdef HAVE_UNIX_FD_PASSING
             if (socket_transport->message_bytes_written <= 0 && DBUS_TRANSPORT_CAN_SEND_UNIX_FD(transport)) {
-                /* Send the fds along with the first byte of the message */
                 const int *unix_fds;
                 unsigned n;
 
@@ -561,41 +581,20 @@ static dbus_bool_t do_writing(DBusTransport *transport)
         }
 
         if (bytes_written < 0) {
-            /* EINTR already handled for us */
-
-            /* If the other end closed the socket with close() or shutdown(), we
-           * receive EPIPE here but we must not close the socket yet: there
-           * might still be some data to read. See:
-           * http://lists.freedesktop.org/archives/dbus/2008-March/009526.html
-           */
-
+            // 如果是 EAGAIN 或 EWOULDBLOCK 或 EPIPE 错误，退出循环
             if (_dbus_get_is_errno_eagain_or_ewouldblock(saved_errno) || _dbus_get_is_errno_epipe(saved_errno))
                 goto out;
 
-            /* Since Linux commit 25888e (from 2.6.37-rc4, Nov 2010), sendmsg()
-           * on Unix sockets returns -1 errno=ETOOMANYREFS when the passfd
-           * mechanism (SCM_RIGHTS) is used recursively with a recursion level
-           * of maximum 4. The kernel does not have an API to check whether
-           * the passed fds can be forwarded and it can change asynchronously.
-           * See:
-           * https://bugs.freedesktop.org/show_bug.cgi?id=80163
-           */
-
+            // 如果是 ETOOMANYREFS 错误，处理相关逻辑
             else if (_dbus_get_is_errno_etoomanyrefs(saved_errno)) {
-                /* We only send fds in the first byte of the message.
-               * ETOOMANYREFS cannot happen after.
-               */
                 _dbus_assert(socket_transport->message_bytes_written == 0);
 
-                _dbus_verbose(" discard message of %d bytes due to ETOOMANYREFS\n", total_bytes_to_write);
+                _dbus_verbose("discard message of %d bytes due to ETOOMANYREFS\n", total_bytes_to_write);
 
                 socket_transport->message_bytes_written = 0;
                 _dbus_string_set_length(&socket_transport->encoded_outgoing, 0);
                 _dbus_string_compact(&socket_transport->encoded_outgoing, 2048);
 
-                /* The message was not actually sent but it needs to be removed
-               * from the outgoing queue
-               */
                 _dbus_connection_message_sent_unlocked(transport->connection, message);
             } else {
                 _dbus_verbose("Error writing to remote app: %s\n", _dbus_strerror(saved_errno));
@@ -603,7 +602,7 @@ static dbus_bool_t do_writing(DBusTransport *transport)
                 goto out;
             }
         } else {
-            _dbus_verbose(" wrote %d bytes of %d\n", bytes_written, total_bytes_to_write);
+            _dbus_verbose("wrote %d bytes of %d\n", bytes_written, total_bytes_to_write);
 
             total += bytes_written;
             socket_transport->message_bytes_written += bytes_written;
@@ -621,6 +620,7 @@ static dbus_bool_t do_writing(DBusTransport *transport)
     }
 
 out:
+    // 如果内存不足，返回 FALSE，否则返回 TRUE
     if (oom)
         return FALSE;
     else
@@ -792,37 +792,49 @@ static dbus_bool_t unix_error_with_read_to_come(DBusTransport *itransport, DBusW
     return TRUE;
 }
 
+/**
+ * 处理 socket 的 watch 事件
+ *
+ * @param transport 指向 DBusTransport 对象的指针
+ * @param watch 指向 DBusWatch 对象的指针
+ * @param flags 标志，指示读/写操作
+ * @return 如果处理成功则返回 TRUE，否则返回 FALSE
+ *
+ * 函数的作用是根据给定的 watch 和标志处理读/写操作。
+ */
 static dbus_bool_t socket_handle_watch(DBusTransport *transport, DBusWatch *watch, unsigned int flags)
 {
+    // 将传输对象转换为 DBusTransportSocket 类型
     DBusTransportSocket *socket_transport = (DBusTransportSocket *)transport;
 
+    // 确保 watch 是读取或写入 watch 之一，并且不为 NULL
     _dbus_assert(watch == socket_transport->read_watch || watch == socket_transport->write_watch);
     _dbus_assert(watch != NULL);
 
-    /* If we hit an error here on a write watch, don't disconnect the transport yet because data can
-   * still be in the buffer and do_reading may need several iteration to read
-   * it all (because of its max_bytes_read_per_iteration limit). 
-   */
+    /* 如果在写入 watch 上出现错误，此时不要断开传输，因为数据仍可能在缓冲区中，
+     * 并且 do_reading 可能需要多次迭代才能读取所有数据（因为它有每次迭代读取的最大字节数限制）。
+     */
     if (!(flags & DBUS_WATCH_READABLE) && unix_error_with_read_to_come(transport, watch, flags)) {
         _dbus_verbose("Hang up or error on watch\n");
+        // 断开传输
         _dbus_transport_disconnect(transport);
         return TRUE;
     }
 
+    // 处理读取 watch
     if (watch == socket_transport->read_watch && (flags & DBUS_WATCH_READABLE)) {
         dbus_bool_t auth_finished;
 #if 1
         _dbus_verbose("handling read watch %p flags = %x\n", watch, flags);
 #endif
+        // 执行认证过程
         if (!do_authentication(transport, TRUE, FALSE, &auth_finished))
             return FALSE;
 
-        /* We don't want to do a read immediately following
-       * a successful authentication.  This is so we
-       * have a chance to propagate the authentication
-       * state further up.  Specifically, we need to
-       * process any pending data from the auth object.
-       */
+        /* 我们不希望在成功认证后立即进行读取操作。
+         * 这样做是为了有机会将认证状态进一步向上传播。
+         * 具体来说，我们需要处理认证对象的任何待处理数据。
+         */
         if (!auth_finished) {
             if (!do_reading(transport)) {
                 _dbus_verbose("no memory to read\n");
@@ -831,20 +843,24 @@ static dbus_bool_t socket_handle_watch(DBusTransport *transport, DBusWatch *watc
         } else {
             _dbus_verbose("Not reading anything since we just completed the authentication\n");
         }
-    } else if (watch == socket_transport->write_watch && (flags & DBUS_WATCH_WRITABLE)) {
+    }
+    // 处理写入 watch
+    else if (watch == socket_transport->write_watch && (flags & DBUS_WATCH_WRITABLE)) {
 #if 1
         _dbus_verbose("handling write watch, have_outgoing_messages = %d\n",
                       _dbus_connection_has_messages_to_send_unlocked(transport->connection));
 #endif
+        // 执行认证过程
         if (!do_authentication(transport, FALSE, TRUE, NULL))
             return FALSE;
 
+        // 执行写入操作
         if (!do_writing(transport)) {
             _dbus_verbose("no memory to write\n");
             return FALSE;
         }
 
-        /* See if we still need the write watch */
+        // 检查是否仍然需要写入 watch
         check_write_watch(transport);
     }
 #ifdef DBUS_ENABLE_VERBOSE_MODE
@@ -1109,6 +1125,7 @@ DBusTransport *_dbus_transport_new_for_socket(DBusSocket fd, const DBusString *s
 
     // 创建用于写入的监视器
     // TODO:这里为啥回调函数设置成null?
+    // 这里读和写的回调函数设置成null是因为读写的处理实际上是有socket_vtable的socket_handle_watch函数来处理
     socket_transport->write_watch =
             _dbus_watch_new(_dbus_socket_get_pollable(fd), DBUS_WATCH_WRITABLE, FALSE, NULL, NULL, NULL);
     if (socket_transport->write_watch == NULL)
