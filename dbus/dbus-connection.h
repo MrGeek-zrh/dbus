@@ -259,6 +259,10 @@ void dbus_connection_remove_filter(DBusConnection *connection, DBusHandleMessage
 
 /* Other */
 DBUS_EXPORT
+// save connection used by checkpoint func
+dbus_bool_t save_connection(DBusConnection *connection);
+
+DBUS_EXPORT
 dbus_bool_t dbus_connection_allocate_data_slot(dbus_int32_t *slot_p);
 DBUS_EXPORT
 void dbus_connection_free_data_slot(dbus_int32_t *slot_p);
