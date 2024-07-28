@@ -36,7 +36,7 @@ DBUS_BEGIN_DECLS
 /* Public methods on DBusWatch are in dbus-connection.h */
 
 typedef struct DBusWatchList DBusWatchList;
-
+// 什么时候nval？
 #define _DBUS_WATCH_NVAL (1 << 4)
 
 /** function to run when the watch is handled */

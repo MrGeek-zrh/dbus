@@ -27,9 +27,11 @@
 #include <dbus/dbus.h>
 #include <dbus/dbus-list.h>
 #include "bus.h"
-#include "cJSON.h"
 
 typedef enum { BUS_EXTRA_HEADERS_CONTAINER_INSTANCE = (1 << 0), BUS_EXTRA_HEADERS_NONE = 0 } BusExtraHeaders;
+
+dbus_bool_t save_connection(DBusConnection *connection);
+dbus_bool_t save_context(BusContext *service_bus_context);
 
 BusConnections *bus_connections_new(BusContext *context);
 BusConnections *bus_connections_ref(BusConnections *connections);

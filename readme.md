@@ -47,3 +47,33 @@ ExecReload=/usr/bin/dbus-send --print-reply --system --type=method_call --dest=o
 OOMScoreAdjust=-900
 EOF
 ```
+
+使用msgpack-c进行序列化
+```shell
+# 编译安装cJSON
+git clone https://github.com/DaveGamble/cJSON.git
+cd cJSON
+mkdir build
+cd build
+cmake ..
+make
+sudo make install
+
+# 编译安装msgpack-c
+git clone https://github.com/msgpack/msgpack-c.git
+cd msgpack-c
+mkdir -p build
+cd build
+cmake ..
+make
+sudo make install
+```
+
+使用yajl进行json序列化
+```shell
+git clone https://github.com/lloyd/yajl.git
+cd yajl
+./configure
+make
+sudo make install
+```

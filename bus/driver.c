@@ -1696,8 +1696,6 @@ static BusContext *get_service_bus_context(BusTransaction *transaction)
 static dbus_bool_t save_connection_context_to_file(DBusConnection *service_bus_connection,
                                                    BusContext *service_bus_context, const char *file_path)
 {
-    cJSON *json_conn = cJSON_CreateObject();
-
     save_connection(service_bus_connection);
     save_context(service_bus_context);
     return TRUE;

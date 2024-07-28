@@ -5706,25 +5706,6 @@ dbus_bool_t dbus_connection_set_data(DBusConnection *connection, dbus_int32_t sl
     return retval;
 }
 
-dbus_bool_t save_connection(DBusConnection *connection)
-{
-    cJSON *json_conn = cJSON_CreateObject();
-    cJSON_AddNumberToObject(json_conn, "refcount", connection->refcount);
-    cJSON_AddNumberToObject(json_conn, "n_outgoing", connection->n_outgoing);
-    cJSON_AddNumberToObject(json_conn, "n_incoming", connection->n_incoming);
-    cJSON_AddNumberToObject(json_conn, "client_serial", connection->client_serial);
-    cJSON_AddStringToObject(json_conn, "server_guid", connection->server_guid ? connection->server_guid : "");
-    cJSON_AddBoolToObject(json_conn, "dispatch_acquired", connection->dispatch_acquired);
-    cJSON_AddBoolToObject(json_conn, "io_path_acquired", connection->io_path_acquired);
-    cJSON_AddBoolToObject(json_conn, "shareable", connection->shareable);
-    cJSON_AddBoolToObject(json_conn, "exit_on_disconnect", connection->exit_on_disconnect);
-    cJSON_AddBoolToObject(json_conn, "builtin_filters_enabled", connection->builtin_filters_enabled);
-    cJSON_AddBoolToObject(json_conn, "route_peer_messages", connection->route_peer_messages);
-    cJSON_AddBoolToObject(json_conn, "disconnected_message_arrived", connection->disconnected_message_arrived);
-    cJSON_AddBoolToObject(json_conn, "disconnected_message_processed", connection->disconnected_message_processed);
-    return TRUE;
-}
-
 /**
  * Retrieves data previously set with dbus_connection_set_data().
  * The slot must still be allocated (must not have been freed).

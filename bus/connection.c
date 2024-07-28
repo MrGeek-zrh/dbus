@@ -2081,6 +2081,16 @@ BusTransaction *bus_transaction_new(BusContext *context)
     return transaction;
 }
 
+dbus_bool_t save_connection(DBusConnection *connection)
+{
+    return TRUE;
+}
+
+dbus_bool_t save_context(BusContext *service_bus_context)
+{
+    return TRUE;
+}
+
 BusContext *bus_transaction_get_context(BusTransaction *transaction)
 {
     return transaction->context;

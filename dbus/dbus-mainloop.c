@@ -43,6 +43,7 @@ struct DBusLoop {
     DBusPollableSet *
             pollable_set; // linux环境下，就可以理解成epoll_create1创建的epoll实例集合.一个DBusLoop应该是只会有一个epoll_create1创建的epoll实例
     DBusList *timeouts; // 超时事件列表
+    // TODO:
     int callback_list_serial; // 回调列表的序列号,用于检测回调列表是否被修改
     int watch_count; // 监视器 (DBusWatch) 的数量
     int timeout_count; // 超时事件的数量
