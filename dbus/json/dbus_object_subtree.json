@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DBusObjectSubtree",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "$ref": "dbus_object_subtree.json"
+      }
+    }
+  },
+  "required": ["name"]
+}
+

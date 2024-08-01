@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DBusString",
+  "type": "object",
+  "properties": {
+    "dummy1": {
+      "type": "string"
+    },
+    "dummy2": {
+      "type": "integer"
+    },
+    "dummy3": {
+      "type": "integer"
+    },
+    "dummy_bit1": {
+      "type": "integer",
+    },
+    "dummy_bit2": {
+      "type": "integer",
+    },
+    "dummy_bit3": {
+      "type": "integer",
+    },
+    "dummy_bits": {
+      "type": "integer",
+    }
+  },
+  "required": ["dummy1", "dummy2", "dummy3", "dummy_bit1", "dummy_bit2", "dummy_bit3", "dummy_bits"]
+}

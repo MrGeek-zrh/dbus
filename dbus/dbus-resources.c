@@ -51,28 +51,27 @@
  * DBusCounter internals. DBusCounter is an opaque object, it must be
  * used via accessor functions.
  */
-struct DBusCounter
-{
-  int refcount;  /**< reference count */
+struct DBusCounter {
+    int refcount; /**< reference count */
 
-  long size_value;       /**< current size counter value */
-  long unix_fd_value;    /**< current unix fd counter value */
+    long size_value; /**< current size counter value */
+    long unix_fd_value; /**< current unix fd counter value */
 
 #ifdef DBUS_ENABLE_STATS
-  long peak_size_value;     /**< largest ever size counter value */
-  long peak_unix_fd_value;  /**< largest ever unix fd counter value */
+    long peak_size_value; /**< largest ever size counter value */
+    long peak_unix_fd_value; /**< largest ever unix fd counter value */
 #endif
 
-  long notify_size_guard_value;    /**< call notify function when crossing this size value */
-  long notify_unix_fd_guard_value; /**< call notify function when crossing this unix fd value */
+    long notify_size_guard_value; /**< call notify function when crossing this size value */
+    long notify_unix_fd_guard_value; /**< call notify function when crossing this unix fd value */
 
-  DBusCounterNotifyFunction notify_function; /**< notify function */
-  void *notify_data; /**< data for notify function */
-  dbus_bool_t notify_pending : 1; /**< TRUE if the guard value has been crossed */
-  DBusRMutex *mutex;    /**< Lock on the entire DBusCounter */
+    DBusCounterNotifyFunction notify_function; /**< notify function */
+    void *notify_data; /**< data for notify function */
+    dbus_bool_t notify_pending : 1; /**< TRUE if the guard value has been crossed */
+    DBusRMutex *mutex; /**< Lock on the entire DBusCounter */
 };
 
-/** @} */  /* end of resource limits internals docs */
+/** @} */ /* end of resource limits internals docs */
 
 /**
  * @addtogroup DBusResources
@@ -85,25 +84,23 @@ struct DBusCounter
  *
  * @returns new counter or #NULL on failure
  */
-DBusCounter*
-_dbus_counter_new (void)
+DBusCounter *_dbus_counter_new(void)
 {
-  DBusCounter *counter;
+    DBusCounter *counter;
 
-  counter = dbus_new0 (DBusCounter, 1);
-  if (counter == NULL)
-    return NULL;
+    counter = dbus_new0(DBusCounter, 1);
+    if (counter == NULL)
+        return NULL;
 
-  counter->refcount = 1;
+    counter->refcount = 1;
 
-  _dbus_rmutex_new_at_location (&counter->mutex);
-  if (counter->mutex == NULL)
-  {
-    dbus_free (counter);
-    counter = NULL;
-  }
+    _dbus_rmutex_new_at_location(&counter->mutex);
+    if (counter->mutex == NULL) {
+        dbus_free(counter);
+        counter = NULL;
+    }
 
-  return counter;
+    return counter;
 }
 
 /**
@@ -112,18 +109,17 @@ _dbus_counter_new (void)
  * @param counter the counter
  * @returns the counter
  */
-DBusCounter *
-_dbus_counter_ref (DBusCounter *counter)
+DBusCounter *_dbus_counter_ref(DBusCounter *counter)
 {
-  _dbus_rmutex_lock (counter->mutex);
+    _dbus_rmutex_lock(counter->mutex);
 
-  _dbus_assert (counter->refcount > 0);
-  
-  counter->refcount += 1;
+    _dbus_assert(counter->refcount > 0);
 
-  _dbus_rmutex_unlock (counter->mutex);
+    counter->refcount += 1;
 
-  return counter;
+    _dbus_rmutex_unlock(counter->mutex);
+
+    return counter;
 }
 
 /**
@@ -132,24 +128,22 @@ _dbus_counter_ref (DBusCounter *counter)
  *
  * @param counter the counter
  */
-void
-_dbus_counter_unref (DBusCounter *counter)
+void _dbus_counter_unref(DBusCounter *counter)
 {
-  dbus_bool_t last_ref = FALSE;
+    dbus_bool_t last_ref = FALSE;
 
-  _dbus_rmutex_lock (counter->mutex);
+    _dbus_rmutex_lock(counter->mutex);
 
-  _dbus_assert (counter->refcount > 0);
+    _dbus_assert(counter->refcount > 0);
 
-  counter->refcount -= 1;
-  last_ref = (counter->refcount == 0);
+    counter->refcount -= 1;
+    last_ref = (counter->refcount == 0);
 
-  _dbus_rmutex_unlock (counter->mutex);
+    _dbus_rmutex_unlock(counter->mutex);
 
-  if (last_ref)
-    {
-      _dbus_rmutex_free_at_location (&counter->mutex);
-      dbus_free (counter);
+    if (last_ref) {
+        _dbus_rmutex_free_at_location(&counter->mutex);
+        dbus_free(counter);
     }
 }
 
@@ -163,21 +157,19 @@ _dbus_counter_unref (DBusCounter *counter)
  * @param counter the counter
  * @param delta value to add to the size counter's current value
  */
-void
-_dbus_counter_adjust_size (DBusCounter *counter,
-                           long         delta)
+void _dbus_counter_adjust_size(DBusCounter *counter, long delta)
 {
-  long old = 0;
+    long old = 0;
 
-  _dbus_rmutex_lock (counter->mutex);
+    _dbus_rmutex_lock(counter->mutex);
 
-  old = counter->size_value;
+    old = counter->size_value;
 
-  counter->size_value += delta;
+    counter->size_value += delta;
 
 #ifdef DBUS_ENABLE_STATS
-  if (counter->peak_size_value < counter->size_value)
-    counter->peak_size_value = counter->size_value;
+    if (counter->peak_size_value < counter->size_value)
+        counter->peak_size_value = counter->size_value;
 #endif
 
 #if 0
@@ -185,14 +177,12 @@ _dbus_counter_adjust_size (DBusCounter *counter,
                  old, delta, counter->size_value);
 #endif
 
-  if (counter->notify_function != NULL &&
-      ((old < counter->notify_size_guard_value &&
-        counter->size_value >= counter->notify_size_guard_value) ||
-       (old >= counter->notify_size_guard_value &&
-        counter->size_value < counter->notify_size_guard_value)))
-    counter->notify_pending = TRUE;
+    if (counter->notify_function != NULL &&
+        ((old < counter->notify_size_guard_value && counter->size_value >= counter->notify_size_guard_value) ||
+         (old >= counter->notify_size_guard_value && counter->size_value < counter->notify_size_guard_value)))
+        counter->notify_pending = TRUE;
 
-  _dbus_rmutex_unlock (counter->mutex);
+    _dbus_rmutex_unlock(counter->mutex);
 }
 
 /**
@@ -203,23 +193,21 @@ _dbus_counter_adjust_size (DBusCounter *counter,
  * This function must not be called with locks held, since it can call out
  * to user code.
  */
-void
-_dbus_counter_notify (DBusCounter *counter)
+void _dbus_counter_notify(DBusCounter *counter)
 {
-  DBusCounterNotifyFunction notify_function = NULL;
-  void *notify_data = NULL;
+    DBusCounterNotifyFunction notify_function = NULL;
+    void *notify_data = NULL;
 
-  _dbus_rmutex_lock (counter->mutex);
-  if (counter->notify_pending)
-    {
-      counter->notify_pending = FALSE;
-      notify_function = counter->notify_function;
-      notify_data = counter->notify_data;
+    _dbus_rmutex_lock(counter->mutex);
+    if (counter->notify_pending) {
+        counter->notify_pending = FALSE;
+        notify_function = counter->notify_function;
+        notify_data = counter->notify_data;
     }
-  _dbus_rmutex_unlock (counter->mutex);
+    _dbus_rmutex_unlock(counter->mutex);
 
-  if (notify_function != NULL)
-    (* notify_function) (counter, notify_data);
+    if (notify_function != NULL)
+        (*notify_function)(counter, notify_data);
 }
 
 /**
@@ -232,36 +220,32 @@ _dbus_counter_notify (DBusCounter *counter)
  * @param counter the counter
  * @param delta value to add to the unix fds counter's current value
  */
-void
-_dbus_counter_adjust_unix_fd (DBusCounter *counter,
-                              long         delta)
+void _dbus_counter_adjust_unix_fd(DBusCounter *counter, long delta)
 {
-  long old = 0;
+    long old = 0;
 
-  _dbus_rmutex_lock (counter->mutex);
+    _dbus_rmutex_lock(counter->mutex);
 
-  old = counter->unix_fd_value;
-  
-  counter->unix_fd_value += delta;
+    old = counter->unix_fd_value;
+
+    counter->unix_fd_value += delta;
 
 #ifdef DBUS_ENABLE_STATS
-  if (counter->peak_unix_fd_value < counter->unix_fd_value)
-    counter->peak_unix_fd_value = counter->unix_fd_value;
+    if (counter->peak_unix_fd_value < counter->unix_fd_value)
+        counter->peak_unix_fd_value = counter->unix_fd_value;
 #endif
 
 #if 0
   _dbus_verbose ("Adjusting counter %ld by %ld = %ld\n",
                  old, delta, counter->unix_fd_value);
 #endif
-  
-  if (counter->notify_function != NULL &&
-      ((old < counter->notify_unix_fd_guard_value &&
-        counter->unix_fd_value >= counter->notify_unix_fd_guard_value) ||
-       (old >= counter->notify_unix_fd_guard_value &&
-        counter->unix_fd_value < counter->notify_unix_fd_guard_value)))
-    counter->notify_pending = TRUE;
 
-  _dbus_rmutex_unlock (counter->mutex);
+    if (counter->notify_function != NULL &&
+        ((old < counter->notify_unix_fd_guard_value && counter->unix_fd_value >= counter->notify_unix_fd_guard_value) ||
+         (old >= counter->notify_unix_fd_guard_value && counter->unix_fd_value < counter->notify_unix_fd_guard_value)))
+        counter->notify_pending = TRUE;
+
+    _dbus_rmutex_unlock(counter->mutex);
 }
 
 /**
@@ -270,14 +254,13 @@ _dbus_counter_adjust_unix_fd (DBusCounter *counter,
  * @param counter the counter
  * @returns its current size value
  */
-long
-_dbus_counter_get_size_value (DBusCounter *counter)
+long _dbus_counter_get_size_value(DBusCounter *counter)
 {
-  long result;
-  _dbus_rmutex_lock (counter->mutex);
-  result = counter->size_value;
-  _dbus_rmutex_unlock (counter->mutex);
-  return result;
+    long result;
+    _dbus_rmutex_lock(counter->mutex);
+    result = counter->size_value;
+    _dbus_rmutex_unlock(counter->mutex);
+    return result;
 }
 
 /**
@@ -286,14 +269,13 @@ _dbus_counter_get_size_value (DBusCounter *counter)
  * @param counter the counter
  * @returns its current unix fd value
  */
-long
-_dbus_counter_get_unix_fd_value (DBusCounter *counter)
+long _dbus_counter_get_unix_fd_value(DBusCounter *counter)
 {
-  long result;
-  _dbus_rmutex_lock (counter->mutex);
-  result = counter->unix_fd_value;
-  _dbus_rmutex_unlock (counter->mutex);
-  return result;
+    long result;
+    _dbus_rmutex_lock(counter->mutex);
+    result = counter->unix_fd_value;
+    _dbus_rmutex_unlock(counter->mutex);
+    return result;
 }
 
 /**
@@ -307,34 +289,28 @@ _dbus_counter_get_unix_fd_value (DBusCounter *counter)
  * @param function function to call in order to notify
  * @param user_data data to pass to the function
  */
-void
-_dbus_counter_set_notify (DBusCounter               *counter,
-                          long                       size_guard_value,
-                          long                       unix_fd_guard_value,
-                          DBusCounterNotifyFunction  function,
-                          void                      *user_data)
+void _dbus_counter_set_notify(DBusCounter *counter, long size_guard_value, long unix_fd_guard_value,
+                              DBusCounterNotifyFunction function, void *user_data)
 {
-  _dbus_rmutex_lock (counter->mutex);
-  counter->notify_size_guard_value = size_guard_value;
-  counter->notify_unix_fd_guard_value = unix_fd_guard_value;
-  counter->notify_function = function;
-  counter->notify_data = user_data;
-  counter->notify_pending = FALSE;
-  _dbus_rmutex_unlock (counter->mutex);
+    _dbus_rmutex_lock(counter->mutex);
+    counter->notify_size_guard_value = size_guard_value;
+    counter->notify_unix_fd_guard_value = unix_fd_guard_value;
+    counter->notify_function = function;
+    counter->notify_data = user_data;
+    counter->notify_pending = FALSE;
+    _dbus_rmutex_unlock(counter->mutex);
 }
 
 #ifdef DBUS_ENABLE_STATS
-long
-_dbus_counter_get_peak_size_value (DBusCounter *counter)
+long _dbus_counter_get_peak_size_value(DBusCounter *counter)
 {
-  return counter->peak_size_value;
+    return counter->peak_size_value;
 }
 
-long
-_dbus_counter_get_peak_unix_fd_value (DBusCounter *counter)
+long _dbus_counter_get_peak_unix_fd_value(DBusCounter *counter)
 {
-  return counter->peak_unix_fd_value;
+    return counter->peak_unix_fd_value;
 }
 #endif
 
-/** @} */  /* end of resource limits exported API */
+/** @} */ /* end of resource limits exported API */

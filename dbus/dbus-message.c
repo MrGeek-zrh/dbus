@@ -3374,31 +3374,43 @@ const char *dbus_message_get_signature(DBusMessage *message)
     return _dbus_string_get_const_data_len(type_str, type_pos, 0);
 }
 
+/**
+ * 检查消息是否具有指定的类型、接口和成员。
+ *
+ * @param message 指向 DBusMessage 的指针
+ * @param type 消息类型
+ * @param iface 接口名称
+ * @param member 成员名称
+ * @return 如果消息具有指定的类型、接口和成员，返回 TRUE，否则返回 FALSE
+ */
 static dbus_bool_t _dbus_message_has_type_interface_member(DBusMessage *message, int type, const char *iface,
                                                            const char *member)
 {
     const char *n;
 
+    // 断言消息、接口和成员不为空
     _dbus_assert(message != NULL);
     _dbus_assert(iface != NULL);
     _dbus_assert(member != NULL);
 
+    // 检查消息类型是否匹配
     if (dbus_message_get_type(message) != type)
         return FALSE;
 
-    /* Optimize by checking the short member name first
-   * instead of the longer interface name
-   */
-
+    // 优化：首先检查较短的成员名称，而不是较长的接口名称
     n = dbus_message_get_member(message);
 
+    // 如果成员名称匹配
     if (n && strcmp(n, member) == 0) {
+        // 获取消息的接口名称
         n = dbus_message_get_interface(message);
 
+        // 如果接口名称为空或者接口名称匹配，返回 TRUE
         if (n == NULL || strcmp(n, iface) == 0)
             return TRUE;
     }
 
+    // 如果不匹配，返回 FALSE
     return FALSE;
 }
 

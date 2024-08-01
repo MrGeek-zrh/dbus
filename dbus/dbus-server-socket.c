@@ -123,6 +123,7 @@ static dbus_bool_t handle_new_client_fd_and_unlock(DBusServer *server, DBusSocke
     // 现在传输对象拥有 client_fd，在传输断开或销毁时会关闭该套接字
 
     // 为传输对象创建新的连接对象
+    // 这里并没有对filter_list进行设置，只是将filter_list初始化为null
     connection = _dbus_connection_new_for_transport(transport);
     _dbus_transport_unref(transport); // 传输对象引用计数减少
     transport = NULL; // 传输对象现在由连接对象管理
@@ -142,6 +143,7 @@ static dbus_bool_t handle_new_client_fd_and_unlock(DBusServer *server, DBusSocke
 
     // 如果存在新的连接回调函数，调用该函数
     if (new_connection_function) {
+        // new_connection_callback
         (*new_connection_function)(server, connection, new_connection_data);
     }
     dbus_server_unref(server);
@@ -159,7 +161,7 @@ static dbus_bool_t handle_new_client_fd_and_unlock(DBusServer *server, DBusSocke
  *
  * @param watch DBus 监视对象，监视服务器的监听套接字
  * @param flags 事件标志，指示需要处理的事件类型
- * @param data 传递给回调函数的数据，这里是 DBus 服务器
+* @param data 传递给回调函数的数据，data是DbusServer
  * @return 总是返回 TRUE
  */
 static dbus_bool_t socket_handle_watch(DBusWatch *watch, unsigned int flags, void *data)
@@ -202,6 +204,7 @@ static dbus_bool_t socket_handle_watch(DBusWatch *watch, unsigned int flags, voi
         if (socket_server->noncefile)
             client_fd = _dbus_accept_with_noncefile(listen_fd, socket_server->noncefile);
         else
+            // 客户端建立的连接的描述符
             client_fd = _dbus_accept(listen_fd);
 
         // 保存 errno 以便调试

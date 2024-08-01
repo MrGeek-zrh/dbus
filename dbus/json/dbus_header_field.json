@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DBusHeaderField",
+  "type": "object",
+  "properties": {
+    "value_pos": {
+      "type": "integer"
+    }
+  },
+  "required": ["value_pos"]
+}

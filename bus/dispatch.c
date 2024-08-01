@@ -207,7 +207,9 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
     dbus_connection_ref(connection);
 
     // 如果连接是监视器，不应发送消息
+    // TODO:什么情况下是监视器？
     if (bus_connection_is_monitor(connection)) {
+        // ·暂时不清楚为啥是监视器就需要获取到sender
         sender = bus_connection_get_name(connection);
 
         // 如果发送者为空，设置为未知
@@ -285,6 +287,7 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
     }
 
     // 为消息分配发送者
+    // ·确定connection 是否仍然活跃
     if (bus_connection_is_active(connection)) {
         // TODO:这个sender是客户端的名称吗？
         sender = bus_connection_get_name(connection);
@@ -309,7 +312,9 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
     // org.freedesktop.DBus service
     // service中有多个object，object中有多个interface，interface中有多个properties、method、signal
     // 提供服务的服务进程通过system bus，向dbus-daemon注册服务
+    // ·判断是否是dbus 提供的服务
     if (service_name && strcmp(service_name, DBUS_SERVICE_DBUS) == 0) {
+        //  这个函数就是进行消息分发的函数了
         if (!bus_transaction_capture(transaction, connection, NULL, message)) {
             BUS_SET_OOM(&error);
             goto out;
@@ -435,6 +440,7 @@ out:
     return result;
 }
 
+// connection拥有的过滤函数
 static DBusHandlerResult bus_dispatch_message_filter(DBusConnection *connection, DBusMessage *message, void *user_data)
 {
     return bus_dispatch(connection, message);
@@ -452,6 +458,7 @@ static DBusHandlerResult bus_dispatch_message_filter(DBusConnection *connection,
 dbus_bool_t bus_dispatch_add_connection(DBusConnection *connection)
 {
     // 尝试为连接添加消息过滤器
+    // 所以每个新建立的connection的过滤函数实际上都是bus_dispatch_message_filter()函数
     if (!dbus_connection_add_filter(connection, bus_dispatch_message_filter, NULL, NULL))
         return FALSE;
 

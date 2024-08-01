@@ -34,7 +34,21 @@
 struct BusMatchRule {
     int refcount; /**< 引用计数 */
     DBusConnection *matches_go_to; /**< 规则的拥有者 */
-    unsigned int flags; /**< 匹配规则的标志 */
+    /*typedef enum
+        {
+        BUS_MATCH_MESSAGE_TYPE            = 1 << 0,
+        BUS_MATCH_INTERFACE               = 1 << 1,
+        BUS_MATCH_MEMBER                  = 1 << 2,
+        BUS_MATCH_SENDER                  = 1 << 3,
+        BUS_MATCH_DESTINATION             = 1 << 4,
+        BUS_MATCH_PATH                    = 1 << 5,
+        BUS_MATCH_ARGS                    = 1 << 6,
+        BUS_MATCH_PATH_NAMESPACE          = 1 << 7,
+        BUS_MATCH_CLIENT_IS_EAVESDROPPING = 1 << 8
+        } BusMatchFlags;
+     * flags 的取值如上
+     */
+    unsigned int flags; /**< 匹配规则的标志 */ //
     int message_type; /**< 消息类型 */
     char *interface; /**< 消息接口 */
     char *member; /**< 消息成员 */
@@ -976,8 +990,10 @@ out:
 
 typedef struct RulePool RulePool;
 // TODO: 定义RulePool结构体
+//  这些规则是什么时候初始化的呢
 struct RulePool {
     /* 将非NULL的接口名称映射到非NULL的(DBusList **) */
+    // key is the interface name, value is a pointer to a DBusList of BusMatchRules
     DBusHashTable *rules_by_iface;
 
     /* 不指定接口的BusMatchRules列表 */
@@ -1124,6 +1140,8 @@ nomem:
     return NULL;
 }
 
+// rules 是什么时候初始化的呢?
+// ·真正用来过滤消息的结构就是这个BusMatchmaker
 static DBusList **bus_matchmaker_get_rules(BusMatchmaker *matchmaker, int message_type, const char *interface,
                                            dbus_bool_t create)
 {
@@ -1135,13 +1153,18 @@ static DBusList **bus_matchmaker_get_rules(BusMatchmaker *matchmaker, int messag
     _dbus_verbose("Looking up rules for message_type %d, interface %s\n", message_type,
                   interface != NULL ? interface : "<null>");
 
+    //  根据messmessage_type  从matchmaker 数组中找到对应的规则列表
     p = matchmaker->rules_by_type + message_type;
 
+    //  如果没有没有interface，就使用without_iface 列表
     if (interface == NULL) {
         return &p->rules_without_iface;
     } else {
+        //有ininterface，就使用interface 列表
         DBusList **list;
 
+        //区分一些概念：在dbus 中,list代表传统概念得链表，link 是代表节点
+        //  根据interface作为key ,  查找对应的的rule_pool
         list = _dbus_hash_table_lookup_string(p->rules_by_iface, interface);
 
         if (list == NULL && create) {
@@ -1827,7 +1850,9 @@ static dbus_bool_t get_recipients_from_list(DBusList **rules, DBusConnection *se
     if (rules == NULL)
         return TRUE;
 
-    // 获取规则列表的第一个链接
+    // 获取规则列表的第一个节点
+    // link->data 是一个 BusMatchRule 结构体的指针
+    //  开始遍历rule_pool
     link = _dbus_list_get_first_link(rules);
     while (link != NULL) {
         BusMatchRule *rule;
@@ -1847,12 +1872,14 @@ static dbus_bool_t get_recipients_from_list(DBusList **rules, DBusConnection *se
 #endif
 
         // 检查消息是否匹配当前规则
+        // TODO:这个是根据什么进行匹配的呢?  哪些条件
         if (match_rule_matches(rule, sender, addressed_recipient, message,
                                BUS_MATCH_MESSAGE_TYPE | BUS_MATCH_INTERFACE)) {
             _dbus_verbose("Rule matched\n");
 
             // 如果该连接还未接收该消息，则将其添加到接收者列表中
             if (bus_connection_mark_stamp(rule->matches_go_to)) {
+                //  将当前connection添加到接收者列表中
                 if (!_dbus_list_append(recipients_p, rule->matches_go_to))
                     return FALSE;
             } else {
@@ -1906,9 +1933,10 @@ dbus_bool_t bus_matchmaker_get_recipients(BusMatchmaker *matchmaker, BusConnecti
     type = dbus_message_get_type(message);
     interface = dbus_message_get_interface(message);
 
-    // 获取匹配任意消息类型和接口的规则
-    neither = bus_matchmaker_get_rules(matchmaker, DBUS_MESSAGE_TYPE_INVALID, NULL, FALSE);
+    //  matchmaker is a array of RulePool pointers,it can be indexed by message type
+    // 获取非法消息对应的RulePool
     just_type = just_iface = both = NULL;
+    neither = bus_matchmaker_get_rules(matchmaker, DBUS_MESSAGE_TYPE_INVALID, NULL, FALSE);
 
     // 如果接口不为空，获取匹配任意消息类型和特定接口的规则
     if (interface != NULL)

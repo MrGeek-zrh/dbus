@@ -131,6 +131,7 @@ struct DBusMessage {
     // 调试特性，指示消息是否已经被缓存。这意味着消息已被“释放”但仍在缓存中。
 #endif
 
+    // 在protobuf中直接用数组保存DBusCounter吧，也就是DBusList的data field。
     DBusList *counters; /**< 0-N DBusCounter used to track message size/unix fds. */
     // 用于跟踪消息大小和 Unix 文件描述符数量的计数器列表。
 

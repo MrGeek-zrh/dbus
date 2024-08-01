@@ -589,6 +589,9 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
     // 如果目前还没有添加任何文件描述符或超时事件进行监视,直接返回
     // 目前还不确定最开始会不会进入这个goto
     // 先不管吧
+    // 如果当前循环中没有被监视的事件，就去处理消息
+    // 啥意思？没有被监视的事件是啥意思？没有新的连接来吗？还是啥意思？
+    // 每个新连接，dbus-daemon都会创建一个新的watch对象进行监视
     if (_dbus_hash_table_get_n_entries(loop->watches) == 0 && loop->timeouts == NULL)
         goto next_iteration;
 
@@ -792,7 +795,6 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
 
             any_oom = FALSE;
 
-            // 一个服务端文件描述符可以监视多个客户端的连接,因此需要遍历所有监视器
             // 调用与该文件描述符相关的所有监视器的回调函数
             for (link = _dbus_list_get_first_link(watches); link != NULL; link = next) {
                 DBusWatch *watch = link->data;

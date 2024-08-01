@@ -1,5 +1,4 @@
 define attach_dbus
-  attach 15848
-39024
+  attach 10702
 end
 attach_dbus

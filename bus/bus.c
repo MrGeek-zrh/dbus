@@ -213,6 +213,13 @@ static void remove_server_timeout(DBusTimeout *timeout, void *data)
     _dbus_loop_remove_timeout(context->loop, timeout);
 }
 
+/**
+ * @brief 新连接的处理函数
+ *
+ * @param server 
+ * @param new_connection 
+ * @param data 就是server->new_connection_data，也就是context
+ */
 static void new_connection_callback(DBusServer *server, DBusConnection *new_connection, void *data)
 {
     /* If this fails it logs a warning, so we don't need to do that */

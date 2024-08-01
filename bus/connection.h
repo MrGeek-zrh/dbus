@@ -30,9 +30,6 @@
 
 typedef enum { BUS_EXTRA_HEADERS_CONTAINER_INSTANCE = (1 << 0), BUS_EXTRA_HEADERS_NONE = 0 } BusExtraHeaders;
 
-dbus_bool_t save_connection(DBusConnection *connection);
-dbus_bool_t save_context(BusContext *service_bus_context);
-
 BusConnections *bus_connections_new(BusContext *context);
 BusConnections *bus_connections_ref(BusConnections *connections);
 void bus_connections_unref(BusConnections *connections);
@@ -132,8 +129,5 @@ int bus_connections_get_peak_bus_names_per_conn(BusConnections *connections);
 
 int bus_connection_get_peak_match_rules(DBusConnection *connection);
 int bus_connection_get_peak_bus_names(DBusConnection *connection);
-
-// save connection used by checkpoint func
-dbus_bool_t save_connection(DBusConnection *connection);
 
 #endif /* BUS_CONNECTION_H */

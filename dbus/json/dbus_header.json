@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DBusHeader",
+  "type": "object",
+  "properties": {
+    "data": {
+      "$ref": "dbus_string.json"
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "$ref": "dbus_header_field.json"
+      },
+    },
+    "padding": {
+      "type": "integer",
+    },
+    "byte_order": {
+      "type": "integer",
+    }
+  },
+  "required": ["data", "fields", "padding", "byte_order"]
+}
+

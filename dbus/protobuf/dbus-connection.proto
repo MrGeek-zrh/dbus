@@ -1,0 +1,361 @@
+syntax = "proto3";
+
+// 定义DBusString消息类型，如果没有其他说明，它可以简单地被定义为一个字符串
+message DBusString
+{
+    string data = 1;
+}
+
+// 定义DBusHeaderField消息类型
+message DBusHeaderField
+{
+    int32 value_pos = 1; // Position of field value, or -1/-2
+}
+
+// 定义DBusHeader消息类型
+message DBusHeader
+{
+    DBusString data = 1; // Header network data
+
+    repeated DBusHeaderField fields = 2; // Track the location of each field in header
+
+    uint32 padding = 3; // 0-7 bytes of alignment in header
+    uint32 byte_order = 4; // byte order of header
+}
+
+// 定义一个简单的布尔类型
+message DBusBool
+{
+    bool value = 1;
+}
+
+// 定义DBusCounter消息类型
+message DBusCounter
+{
+    int64 size_value = 2; // current size counter value
+    int64 unix_fd_value = 3; // current unix fd counter value
+
+    // 由于proto3不支持条件编译，我们可以选择添加这些字段并在实际应用中决定是否使用
+    int64 peak_size_value = 4; // largest ever size counter value
+    int64 peak_unix_fd_value = 5; // largest ever unix fd counter value
+
+    int64 notify_size_guard_value = 6; // call notify function when crossing this size value
+    int64 notify_unix_fd_guard_value = 7; // call notify function when crossing this unix fd value
+
+    string notify_function_id = 8; // notify function identifier
+    string notify_data = 9; // data for notify function (serialized or simple string)
+
+    DBusBool notify_pending = 10; // TRUE if the guard value has been crossed
+}
+
+message DBusDataSlot
+{
+    // 这个void*data是啥呢?
+    // 暂时先不管吧
+    bytes data = 1; // 使用 bytes 类型来模拟 void* 类型
+    string free_data_func_info = 2; // 提供释放函数的描述信息（不能直接存储函数指针）
+}
+
+// DBusDataSlotList 的 protobuf 定义
+message DBusDataSlotList
+{
+    repeated DBusDataSlot slots = 1; // 使用 repeated 字段表示 DBusDataSlot 的数组
+    int32 n_slot = 2;
+}
+
+message DBusMessage
+{
+    DBusHeader header = 1;
+    DBusString body = 2;
+    repeated DBusCounter counter = 3;
+    int64 size_counter_delta = 4;
+    uint32 changed_stamp = 5;
+    DBusDataSlotList slot_list = 6;
+    int32 generation = 7;
+    repeated int32 fds = 8; // 文件描述符的列表，使用int32来表示
+    uint32 n_unix_fds = 9; // 数组中有效的 Unix 文件描述符数量
+    uint32 n_unix_fds_allocated = 10; // 数组的已分配大小
+    int64 unix_fd_counter_delta = 11; // 增加的unix fd计数器的大小
+}
+
+message DBusValidity
+{
+    int32 valid_type = 1;
+}
+
+message DBusMessageLoader
+{
+    DBusString data = 1;
+    repeated DBusMessage messages = 2;
+    int64 max_message_size = 3;
+    DBusValidity corruption_reason = 4;
+    uint32 corrupted = 5;
+    uint32 buffer_outstanding = 6;
+
+    uint32 unix_fds_outstanding = 7;
+    repeated int32 unix_fds = 8;
+    uint32 n_unix_fds_allocated = 9;
+    uint32 n_unix_fds = 10;
+
+    // 函数
+    string unix_fds_change = 11;
+    // 保存void*data
+    bytes unix_fds_change_data = 12;
+}
+
+// DBusAuthStateData 的 protobuf 定义
+message DBusAuthStateData
+{
+    string name = 1; // 状态的名称
+    string handler = 2; // 描述状态函数的标识符或名称
+}
+
+// DBusAuthMechanismHandler 的 protobuf 定义
+message DBusAuthMechanismHandler
+{
+    string mechanism = 1; // 机制的名称
+    string server_data_func = 2; // 服务端处理数据的函数标识符
+    string server_encode_func = 3; // 服务端编码函数的标识符
+    string server_decode_func = 4; // 服务端解码函数的标识符
+    string server_shutdown_func = 5; // 服务端关闭函数的标识符
+    string client_initial_response_func = 6; // 客户端处理初始响应的函数标识符
+    string client_data_func = 7; // 客户端处理数据的函数标识符
+    string client_encode_func = 8; // 客户端编码函数的标识符
+    string client_decode_func = 9; // 客户端解码函数的标识符
+    string client_shutdown_func = 10; // 客户端关闭函数的标识符
+}
+
+// 填入具体的字段定义
+message DBusCredentials
+{
+    int32 refcount = 1; // 引用计数
+    uint64 unix_uid = 2; // Unix 用户ID
+    repeated uint64 unix_gids = 3; // Unix 组ID列表
+    int32 n_unix_gids = 4; // Unix 组ID数量，可由 unix_gids 的长度推导，这里显式定义以对应原结构
+    uint64 pid = 5; // 进程ID
+    string windows_sid = 6; // Windows 安全ID
+    string linux_security_label = 7; // Linux 安全标签
+    bytes adt_audit_data = 8; // 审计数据，用 bytes 类型表示任意二进制数据
+    int32 adt_audit_data_size = 9; // 审计数据的大小，可由 adt_audit_data 的长度推导，这里显式定义以对应原结构
+}
+
+message DBusKey
+{
+    int32 id = 1; // Identifier used to refer to the key
+    int64 creation_time = 2; // When the key was generated, as a unix timestamp
+    DBusString secret = 3; // The actual key
+}
+
+message DBusKeyring
+{
+    int32 refcount = 1; // Reference count
+    DBusString directory = 2; // Directory containing the keyring and lockfile
+    DBusString filename = 3; // Keyring filename
+    DBusString filename_lock = 4; // Name of lockfile
+    repeated DBusKey keys = 5; // Keys loaded from the file
+    int32 n_keys = 6; // Number of keys, which could be derived from the length of `keys`
+    DBusCredentials credentials = 7; // Credentials for the user the keyring is for
+}
+
+// DBusAuth 的 protobuf 定义
+message DBusAuth
+{
+    int32 refcount = 1;
+    string side = 2; // 客户端或服务端
+
+    DBusString incoming = 3;
+    DBusString outgoing = 4;
+
+    // 假设这是一个已定义的复杂类型
+    DBusAuthStateData state = 5;
+
+    // 通常用字符串替换原有的结构指针
+    DBusAuthMechanismHandler mech = 6;
+
+    DBusString identity = 7;
+    DBusCredentials credentials = 8;
+    DBusCredentials authorized_identity = 9;
+    DBusCredentials desired_identity = 10;
+
+    DBusString context = 11;
+    DBusKeyring keyring = 12;
+    int32 cookie_id = 13;
+    DBusString challenge = 14;
+
+    // 字符串数组用于表示允许的机制
+    repeated string allowed_mechs = 15;
+
+    // 以下是一些布尔状态标记
+    bool needed_memory = 16;
+    bool already_got_mechanisms = 17;
+    bool already_asked_for_initial_response = 18;
+    bool buffer_outstanding = 19;
+
+    bool unix_fd_possible = 20;
+    bool unix_fd_negotiated = 21;
+}
+
+message DBusTransport
+{
+    DBusCredentials credentials = 1; // 从套接字读取的凭据
+    int64 max_live_messages_size = 2; // 接收消息的最大总大小
+    int64 max_live_messages_unix_fds = 3; // 接收消息的最大Unix文件描述符总数
+    DBusCounter live_messages = 4;
+    string address = 5; // 连接的服务器地址
+    string expected_guid = 6; // 期望的服务器GUID
+
+    // 凭证交换和用户验证的布尔标志
+    bool authenticated = 7; // 是否已认证
+    bool send_credentials_pending = 8; // 是否需要发送凭据
+    bool receive_credentials_pending = 9; // 是否需要接收凭据
+    bool is_server = 10; // 是否为服务器端
+    bool unused_bytes_recovered = 11; // 是否已从认证中恢复未使用的字节
+    bool allow_anonymous = 12; // 是否允许匿名客户端连接
+
+    // 用于描述可能的回调函数和数据
+    string unix_user_function = 13; // 检查Unix用户是否被授权的函数描述
+    string free_unix_user_data = 14;
+    bytes unix_user_data = 15; // Unix用户函数的数据
+    string windows_user_function = 16; // 检查Windows用户是否被授权的函数描述
+    string free_windows_user_data = 17;
+    bytes windows_user_data = 18; // Windows用户函数的数据
+    DBusMessageLoader loader = 19;
+    DBusAuth auth = 20;
+    bool disconnected = 21; // 是否已断开连接
+}
+
+message DBusWatch
+{
+    int32 refcount = 1; // Reference count
+    int32 fd = 2; // File descriptor being watched
+    uint32 flags = 3; // Conditions to watch, such as readable, writable, etc.
+
+    // Callbacks and data associated with this watch
+    string handler = 4; // Identifier for the watch handler function
+    bytes handler_data = 5; // Data passed to the handler function, serialized
+    string free_handler_data_function = 6; // Identifier for function to free handler data
+
+    bytes data = 7; // Application specific data, serialized
+    string free_data_function = 8; // Identifier for function to free application data
+
+    bool enabled = 9; // Whether the watch is enabled
+    bool oom_last_time = 10; // Whether there was an Out Of Memory error last time
+}
+
+message DBusWatchList
+{
+    repeated DBusWatch watches = 1; // Repeated field for watch objects
+
+    // Callbacks are represented by strings that should correspond to functions in the application
+    string add_watch_function = 2; // Identifier for the callback to add a watch
+    string remove_watch_function = 3; // Identifier for the callback to remove a watch
+    string watch_toggled_function = 4; // Identifier for the callback on toggling watch enablement
+
+    bytes watch_data = 5; // Serialized data for watch callbacks, if necessary
+    string watch_free_data_function = 6; // Identifier for the function to free watch data
+}
+
+message DBusTimeout
+{
+    int32 refcount = 1; // Reference count
+    int32 interval = 2; // Timeout interval in milliseconds
+
+    // Identifiers for handler functions and serialized data for handler data
+    string handler = 3; // Identifier for the timeout handler function
+    bytes handler_data = 4; // Serialized data for the timeout handler, if needed
+    string free_handler_data_function = 5; // Identifier for function to free handler data
+
+    bytes data = 6; // Application-specific data, serialized
+    string free_data_function = 7; // Identifier for function to free application data
+
+    // Bitfields translated to bool
+    bool enabled = 8; // True if the timeout is active
+    bool needs_restart = 9; // True if the timeout should be restarted after re-enabling
+}
+
+message DBusTimeoutList
+{
+    repeated DBusTimeout timeouts = 1; // List of timeout objects
+
+    // Callback function identifiers for adding, removing, or toggling timeouts
+    string add_timeout_function = 2; // Identifier for the callback to add a timeout
+    string remove_timeout_function = 3; // Identifier for the callback to remove a timeout
+    string timeout_toggled_function =
+            4; // Identifier for the callback when a timeout is enabled/disabled or changes interval
+
+    // Data associated with timeout callbacks
+    bytes timeout_data = 5; // Serialized data for timeout callbacks
+    string timeout_free_data_function = 6; // Identifier for the function to free timeout data
+}
+
+message DBusHashTable
+{
+    // 这里只保存消息的序列号和对应的
+    uint32 serial = 1;
+    // 这个应该是一个DBusPendingCall结构体
+    bytes pending_call = 2;
+}
+
+message DBusMessageFilter
+{
+    int32 refcount = 1; // Reference count, translated from DBusAtomic
+    string function = 2; // Identifier for the filter function to be invoked
+    bytes user_data = 3; // Serialized user data, to be passed to the filter function
+    string free_user_data_function = 4; // Identifier for function to free user data
+}
+
+message DBusDispatchStatus
+{
+    int32 status = 1;
+}
+
+message DBusObjectTree
+{
+    int32 refcount = 1; // Reference count, translated from DBusAt
+    bytes DBusObjectSubtree = 2;
+}
+
+// DBusConnection definition
+message DBusConnection
+{
+    repeated DBusMessage outgoing_messages = 1;
+    repeated DBusMessage incoming_messages = 2;
+    repeated DBusMessage expired_messages = 3;
+    DBusMessage message_borrowed = 4;
+    int32 n_outgoing = 5; // 发送队列的长度
+    int32 n_incoming = 6; // 接收队列的长度
+    DBusCounter outgoing_counter = 7; // 发送消息的大小计数器
+    DBusTransport transport = 8;
+    DBusWatchList watches = 9;
+    DBusTimeoutList timeouts = 10;
+    repeated DBusMessageFilter filter_list = 11;
+    DBusDataSlotList slot_list = 12;
+    repeated DBusHashTable pending_replies = 13;
+    uint32 client_serial = 14;
+    repeated DBusMessage disconnect_message_link = 15;
+    string server_guid = 16;
+    bool dispatch_acquired = 17;
+    bool io_path_acquired = 18;
+    bool shareable = 19;
+    bool exit_on_disconnect = 20;
+    bool builtin_filters_enabled = 21;
+    bool route_peer_messages = 22;
+    bool disconnected_message_arrived = 23;
+    bool disconnected_message_processed = 24;
+    bool have_connection_lock = 25;
+    int32 generation = 26;
+    string wakeup_main_function = 27;
+    bytes wakeup_main_data = 28;
+    string free_wakeup_main_data = 29;
+    string dispatch_status_function = 30;
+    bytes dispatch_status_data = 31;
+    string free_dispatch_status_data = 32;
+    DBusDispatchStatus last_dispatch_status = 33;
+    DBusObjectTree objects = 34;
+}
+
+// service_state
+message service_state
+{
+    repeated DBusConnection connection = 1;
+}

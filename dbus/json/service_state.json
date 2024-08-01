@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ServiceState",
+  "type": "object",
+  "properties": {
+    "connection": {
+      "$ref": "dbus_connection.json"
+    }
+  },
+  "required": ["connection"]
+}

@@ -7,3 +7,5 @@ echo "define attach_dbus" >./dbus.gdb
 echo "  attach $pid" >>./dbus.gdb
 echo "end" >>./dbus.gdb
 echo "attach_dbus" >>./dbus.gdb
+
+sudo gdb -x dbus.gdb

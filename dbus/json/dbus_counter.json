@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DBusCounter",
+  "type": "object",
+  "properties": {
+    "refcount": {
+      "type": "integer"
+    },
+    "size_value": {
+      "type": "integer"
+    },
+    "unix_fd_value": {
+      "type": "integer"
+    },
+    "peak_size_value": {
+      "type": "integer"
+    },
+    "peak_unix_fd_value": {
+      "type": "integer"
+    },
+    "notify_size_guard_value": {
+      "type": "integer"
+    },
+    "notify_unix_fd_guard_value": {
+      "type": "integer"
+    },
+    "notify_function": {
+      "type": "string"
+    },
+    "notify_data": {
+      "type": "string"
+    },
+    "notify_pending": {
+      "type": "boolean"
+    },
+  },
+  "required": [
+    "refcount", 
+    "size_value", 
+    "unix_fd_value", 
+    "notify_size_guard_value", 
+    "notify_unix_fd_guard_value", 
+    "notify_function", 
+    "notify_data", 
+    "notify_pending", 
+    "mutex"
+  ]
+}
+

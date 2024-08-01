@@ -22,6 +22,8 @@
  *
  */
 
+#include "bus/service_state.h"
+
 #include "bus/bus.h"
 #include "dbus/dbus-protocol.h"
 #include "dbus/dbus-sysdeps.h"
@@ -1687,42 +1689,6 @@ err:
     return NULL;
 }
 
-// TODO:直接用transaction->context为啥报错？
-static BusContext *get_service_bus_context(BusTransaction *transaction)
-{
-    return bus_transaction_get_context(transaction);
-}
-
-static dbus_bool_t save_connection_context_to_file(DBusConnection *service_bus_connection,
-                                                   BusContext *service_bus_context, const char *file_path)
-{
-    save_connection(service_bus_connection);
-    save_context(service_bus_context);
-    return TRUE;
-}
-
-/*
- * 需要保存的应该是以下内容：
- * 1. DBusTransport:对应的Connection中包含transport了，所以其实并不需要额外保存
- * 2. DBusConnection
- * 3. BusContext
-    // 1. 获取到服务进程拥有的BusConnection
-    // 2. 获取到服务进程对应的BusContext
-    // 3. save 这两个结构体
- * */
-static dbus_bool_t save_service_status(char *service_name, char *file_path, DBusConnection *connection,
-                                       BusTransaction *transaction)
-{
-    // 1. 获取到服务进程对应的BusContext
-    BusContext *service_bus_context;
-    service_bus_context = get_service_bus_context(transaction);
-
-    // 2. save 这两个结构体
-    save_connection_context_to_file(connection, service_bus_context, file_path);
-
-    return TRUE;
-}
-
 // 定义 exec_with_privilege 函数
 static int exec_with_privilege(const char *cmd, char *const argv[])
 {
@@ -1865,7 +1831,9 @@ static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbo
     // 5. 保存服务再dbus-daemon中的状态
     char *service_name = "com.example.SystemService";
     char *file_path = "/tmp/criu/status.json";
-    if (!save_service_status(service_name, file_path, connection, transaction))
+    service_state *state = dbus_new(service_state, 1);
+    state->connection = connection;
+    if (!save_service_status(service_name, file_path, state))
         return FALSE;
     printf("save_service_status pass\n");
 

@@ -793,14 +793,14 @@ static dbus_bool_t unix_error_with_read_to_come(DBusTransport *itransport, DBusW
 }
 
 /**
- * 处理 socket 的 watch 事件
+ * 处理socket读/写操作。
+ * DBusTransport关联的socket相关的读写操作，这个函数是作为部分函数注册在DBusTransportVTable *vtable虚函数表中的
  *
  * @param transport 指向 DBusTransport 对象的指针
  * @param watch 指向 DBusWatch 对象的指针
  * @param flags 标志，指示读/写操作
  * @return 如果处理成功则返回 TRUE，否则返回 FALSE
  *
- * 函数的作用是根据给定的 watch 和标志处理读/写操作。
  */
 static dbus_bool_t socket_handle_watch(DBusTransport *transport, DBusWatch *watch, unsigned int flags)
 {
@@ -1137,8 +1137,7 @@ DBusTransport *_dbus_transport_new_for_socket(DBusSocket fd, const DBusString *s
     if (socket_transport->read_watch == NULL)
         goto failed;
 
-    // 初始化传输的基础部分
-    // 这个应该不叫基础部分，应该叫做从父类那里继承的部分
+    // 初始化DBUSTransport
     if (!_dbus_transport_init_base(&socket_transport->base, &socket_vtable, server_guid, address))
         goto failed;
 

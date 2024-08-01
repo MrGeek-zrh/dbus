@@ -56,7 +56,7 @@ struct DBusWatch {
     unsigned int flags; /**< Conditions to watch. 监视的条件，例如可读、可写等 */
 
     DBusWatchHandler handler; /**< Watch handler. 当文件描述符上发生事件时调用的处理函数 */
-    void *handler_data; /**< Watch handler data. 传递给处理函数的数据 */
+    void *handler_data; /**< Watch handler data. 传递给处理函数的数据 */ // 这个放的应该是Dbusserver对象
     DBusFreeFunction free_handler_data_function; /**< Free the watch handler data. 释放处理函数数据的函数 */
 
     void *data; /**< Application data. 应用程序特定的数据 */
@@ -694,6 +694,8 @@ dbus_bool_t dbus_watch_handle(DBusWatch *watch, unsigned int flags)
                       _dbus_pollable_printable(watch->fd));
         return TRUE;
     } else
+        // socket_handle_watch
+        /* * @param data 传递给回调函数的数据，data是DbusServer */
         return (*watch->handler)(watch, flags, watch->handler_data);
 }
 

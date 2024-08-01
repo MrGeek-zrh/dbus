@@ -1,0 +1,144 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DBusConnection",
+  "type": "object",
+  "properties": {
+    "refcount": {
+      "type": "integer"
+    },
+    "outgoing_messages": {
+      "type": "array",
+      "items": {
+        "$ref": "dbus_message.json"  // Reference to DBusMessage definition
+      }
+    },
+    "incoming_messages": {
+      "type": "array",
+      "items": {
+        "$ref": "dbus_message.json"  // Reference to DBusMessage definition
+      }
+    },
+    "expired_messages": {
+      "type": "array",
+      "items": {
+        "$ref": "dbus_message.json"  // Reference to DBusMessage definition
+      }
+    },
+    "message_borrowed": {
+      "$ref": "dbus_message.json"  // Reference to DBusMessage definition
+    },
+    "n_outgoing": {
+      "type": "integer"
+    },
+    "n_incoming": {
+      "type": "integer"
+    },
+    "outgoing_counter": {
+      "$ref": "dbus_counter.json" // Reference to DBusCounter
+    },
+    "transport": {
+      "type": "dbus_transport.json"  // Reference to DBusTransport
+    },
+    "watches": {
+      "type": "array",  // placeholder for DBusWatchList object
+        "items": {
+            "$ref": "dbus_watch.json"  // Reference to DBusWatch
+        }
+    },
+    "timeouts": {
+      "type": "array",  
+        "items": {
+            "$ref": "dbus_timeout.json"  // Reference to DBusTimeout
+        }
+    },
+    "filter_list": {
+      "type": "array",
+      "items": {
+        "$ref": "dbus_filter.json"  // Reference to DBusFilter
+      }
+    },
+    "slot_list": {
+      "type": "array",
+      "items": {
+        "$ref": "dbus_slot.json"  // Reference to DBusSlot
+      }
+    },
+    "pending_replies": {
+        "type": "array",
+        "items": {
+            "$ref": "dbus_pending_call.json"  // Reference to DBusPendingCall
+        }
+    },
+    "client_serial": {
+      "type": "integer"
+    },
+    "disconnect_message_link": {
+        "type": "array",
+        "items": {
+            "$ref": "dbus_message.json"  // Reference to DBusMessage
+        }
+    },
+    "wakeup_main_function": {
+      "type": "string"  // placeholder for function pointer
+    },
+    "wakeup_main_data": {
+      "type": "string"  // placeholder for application data
+    },
+    "free_wakeup_main_data": {
+      "type": "string"  // placeholder for free function pointer
+    },
+    "dispatch_status_function": {
+      "type": "string"  // placeholder for function pointer
+    },
+    "dispatch_status_data": {
+      "type": "string"  // placeholder for application data
+    },
+    "free_dispatch_status_data": {
+      "type": "string"  // placeholder for free function pointer
+    },
+    "last_dispatch_status": {
+      "type": "string"  // placeholder for dispatch status enum
+    },
+    "objects": {
+      "type": "array",  // placeholder for DBusObjectTree object
+        "additionalProperties": {
+            "$ref": "dbus_object_tree.json"  // Reference to DBusObjectTree
+        }
+    },
+    "server_guid": {
+      "type": "string"
+    },
+    "dispatch_acquired": {
+      "type": "boolean"
+    },
+    "io_path_acquired": {
+      "type": "boolean"
+    },
+    "shareable": {
+      "type": "boolean"
+    },
+    "exit_on_disconnect": {
+      "type": "boolean"
+    },
+    "builtin_filters_enabled": {
+      "type": "boolean"
+    },
+    "route_peer_messages": {
+      "type": "boolean"
+    },
+    "disconnected_message_arrived": {
+      "type": "boolean"
+    },
+    "disconnected_message_processed": {
+      "type": "boolean"
+    },
+    "have_connection_lock": {
+      "type": "boolean"
+    },
+    "generation": {
+      "type": "integer"
+    }
+  },
+  "required": ["refcount", "n_outgoing", "n_incoming", "client_serial"]
+}
+

@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DBusMessage",
+  "type": "object",
+  "properties": {
+    "refcount": {
+      "type": "integer"
+    },
+    "header": {
+      "$ref": "dbus_header.json"
+    },
+    "body": {
+      "$ref": "dbus_string.json"
+    },
+    "in_cache": {
+      "type": "boolean"
+    },
+    "counters": {
+      "type": "array",
+      "items": {
+        "$ref": "dbus_counter.json"
+      }
+    },
+    "size_counter_delta": {
+      "type": "integer"
+    },
+    "changed_stamp": {
+      "type": "integer"
+    },
+    "slot_list": {
+        "type":"array",
+        "items": {
+            "$ref": "dbus_data_slot.json"
+        }
+    },
+    "generation": {
+      "type": "integer"
+    },
+    "unix_fds": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "n_unix_fds": {
+      "type": "integer"
+    },
+    "n_unix_fds_allocated": {
+      "type": "integer"
+    },
+    "unix_fd_counter_delta": {
+      "type": "integer"
+    }
+  },
+  "required": ["refcount", "header", "body", "counters", "size_counter_delta", "changed_stamp", "slot_list"]
+}
+

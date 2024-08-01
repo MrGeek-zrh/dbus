@@ -233,11 +233,16 @@ typedef struct DBusMessageFilter DBusMessageFilter;
 /**
  * Internal struct representing a message filter function
  */
+/**
+ * 内部结构体，表示一个消息过滤函数
+ * 过滤条件呢？在哪里设置的呢？
+ * TODO:
+ */
 struct DBusMessageFilter {
-    DBusAtomic refcount; /**< Reference count */
-    DBusHandleMessageFunction function; /**< Function to call to filter */
-    void *user_data; /**< User data for the function */
-    DBusFreeFunction free_user_data_function; /**< Function to free the user data */
+    DBusAtomic refcount; /**< 引用计数，用于管理内存和资源的引用计数 */
+    DBusHandleMessageFunction function; /**< 指向过滤函数的指针，调用此函数来过滤消息 */
+    void *user_data; /**< 用户数据指针，传递给过滤函数的用户自定义数据 */
+    DBusFreeFunction free_user_data_function; /**< 指向释放用户数据的函数指针，用于清理用户数据 */
 };
 
 /**
@@ -261,7 +266,8 @@ static DBusAtomic _dbus_modify_sigpipe = { TRUE };
 struct DBusConnection {
     DBusAtomic refcount; /**< Reference count. 用于管理 DBusConnection 对象的生命周期。 */
 
-    DBusRMutex *mutex; /**< Lock on the entire DBusConnection 整个 DBusConnection 对象的锁，用于保护并发访问。 */
+    DBusRMutex *mutex;
+    /**< Lock on the entire DBusConnection 整个 DBusConnection 对象的锁，用于保护并发访问。 */ // 锁的状态我决定是没必要保存的
 
     DBusCMutex *dispatch_mutex; /**< Protects dispatch_acquired 保护 dispatch_acquired 字段的互斥锁。 */
     DBusCondVar
@@ -269,6 +275,9 @@ struct DBusConnection {
     DBusCMutex *io_path_mutex; /**< Protects io_path_acquired 保护 io_path_acquired 字段的互斥锁。 */
     DBusCondVar *io_path_cond; /**< Notify when io_path_acquired is available io_path_acquired 可用时通知的条件变量。 */
 
+    // 这个list的data域放的是DBusMessage
+    //  下面三个都是
+    //  所以我觉得直接用数组保存message 就行了
     DBusList *outgoing_messages; /**< Queue of messages we need to send, send the end of the list first. 需要发送的消息队列，末尾的消息最先发送。 */
     DBusList *incoming_messages; /**< Queue of messages we have received, end of the list received most recently. 已接收的消息队列，末尾的消息是最近接收的。 */
     DBusList *expired_messages; /**< Messages that will be released when we next unlock. 下次解锁时释放的过期消息队列。 */
@@ -287,6 +296,7 @@ struct DBusConnection {
     DBusWatchList *watches; /**< Stores active watches. 存储活跃的监视器列表。 */
     DBusTimeoutList *timeouts; /**< Stores active timeouts. 存储活跃的超时列表。 */
     // 这个过滤器列表是什么时候被初始化的呢？
+    // TODO:每个自定义服务的过滤器是啥时候设置的呢？
     DBusList *filter_list; /**< List of filters. 过滤器列表。 */
 
     DBusRMutex *
@@ -302,6 +312,7 @@ struct DBusConnection {
     DBusList *disconnect_message_link; /**< Preallocated list node for queueing the disconnection message 预分配的用于排队断开消息的列表节点。 */
 
     DBusWakeupMainFunction wakeup_main_function; /**< Function to wake up the mainloop 唤醒主循环的函数。 */
+    // 在json中，获取到指针，然后转为string进行保存吧
     void *wakeup_main_data; /**< Application data for wakeup_main_function 唤醒主循环函数的应用数据。 */
     DBusFreeFunction free_wakeup_main_data; /**< free wakeup_main_data 释放唤醒主循环数据的函数。 */
 
@@ -3581,18 +3592,30 @@ void dbus_connection_steal_borrowed_message(DBusConnection *connection, DBusMess
 /* See dbus_connection_pop_message, but requires the caller to own
  * the lock before calling. May drop the lock while running.
  */
+/**
+ * 从DBus连接中弹出一条消息，调用该函数前需要先获取锁，运行时可能会释放锁。
+ *
+ * @param connection 指向DBusConnection的指针
+ * @return 返回DBusList类型的指针，如果没有消息则返回NULL
+ */
 static DBusList *_dbus_connection_pop_message_link_unlocked(DBusConnection *connection)
 {
+    // 检查是否持有锁
     HAVE_LOCK_CHECK(connection);
 
+    // 确保没有借用中的消息
     _dbus_assert(connection->message_borrowed == NULL);
 
+    // 如果有待处理的消息
     if (connection->n_incoming > 0) {
         DBusList *link;
 
+        // 从incoming_messages列表中弹出第一条消息链接
         link = _dbus_list_pop_first_link(&connection->incoming_messages);
+        // 将待处理消息数量减一
         connection->n_incoming -= 1;
 
+        // 输出调试信息，记录弹出的消息
         _dbus_verbose("Message %p (%s %s %s %s sig:'%s' serial:%u) removed from incoming queue %p, %d incoming\n",
                       link->data, dbus_message_type_to_string(dbus_message_get_type(link->data)),
                       dbus_message_get_path(link->data) ? dbus_message_get_path(link->data) : "no path",
@@ -3601,12 +3624,16 @@ static DBusList *_dbus_connection_pop_message_link_unlocked(DBusConnection *conn
                       dbus_message_get_signature(link->data), dbus_message_get_serial(link->data), connection,
                       connection->n_incoming);
 
+        // 跟踪消息引用计数
         _dbus_message_trace_ref(link->data, -1, -1, "_dbus_connection_pop_message_link_unlocked");
 
+        // 检查是否有断开连接的消息到达
         check_disconnected_message_arrived_unlocked(connection, link->data);
 
+        // 返回弹出的消息链接
         return link;
     } else
+        // 如果没有待处理的消息，返回NULL
         return NULL;
 }
 
@@ -3985,6 +4012,12 @@ static DBusHandlerResult _dbus_connection_peer_filter_unlocked_no_update(DBusCon
         return DBUS_HANDLER_RESULT_NEED_MEMORY;
 
     // 处理 Ping 方法调用
+    // 通过消息的类型、接口名称、成员名称来比对是否是这个函数调用
+    /* 关于类型的补充说明：包含下面几种类型：	
+    •	DBUS_MESSAGE_TYPE_METHOD_CALL：表示方法调用消息
+	•	DBUS_MESSAGE_TYPE_METHOD_RETURN：表示方法返回消息
+	•	DBUS_MESSAGE_TYPE_ERROR：表示错误消息
+	•	DBUS_MESSAGE_TYPE_SIGNAL：表示信号消息*/
     if (dbus_message_is_method_call(message, DBUS_INTERFACE_PEER, "Ping")) {
         // 创建方法返回消息
         ret = dbus_message_new_method_return(message);
@@ -4180,7 +4213,8 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     _dbus_connection_acquire_dispatch(connection);
     HAVE_LOCK_CHECK(connection);
 
-    // 从连接的消息队列中弹出下一条消息
+    // 获取接收到的消息
+    // 这个message_link 是DBusMessage 链表
     message_link = _dbus_connection_pop_message_link_unlocked(connection);
     if (message_link == NULL) {
         // 其他线程已处理了消息
@@ -4276,7 +4310,7 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     // 最开始设置处理结果为未处理
     result = DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
-    // 获取消息的序列号
+    // 这个是dbus定义中定义的一个字段，存储的是客户端发送的消息的序列号，这个叫做reply_serial，他保存的是客户端的serial number字段的值
     reply_serial = dbus_message_get_reply_serial(message);
     // pendingcall 可以用来追踪等待回复的消息
     // 这里其实还是不太明白具体是用来做什么
@@ -4322,8 +4356,6 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     }
 
     // 引用过滤器
-    // 遍历链表
-    // 这个是过滤器链表
     for (link = _dbus_list_get_first_link(&filter_list_copy); link != NULL;
          link = _dbus_list_get_next_link(&filter_list_copy, link))
         _dbus_message_filter_ref(link->data);
@@ -5263,6 +5295,8 @@ void dbus_connection_set_route_peer_messages(DBusConnection *connection, dbus_bo
  * dbus_connection_dispatch() 的一部分运行的。这可能是一个特性，因为过滤器可能会导致任意的重入性。
  * 但如果你出于某种原因试图过滤 METHOD_RETURN，这会很麻烦。
  *
+ * 在这里设置了connection的filter_list过滤器列表
+ *
  * @param connection 指向 DBusConnection 的指针
  * @param function 处理消息的函数
  * @param user_data 传递给函数的用户数据
@@ -5279,6 +5313,7 @@ dbus_bool_t dbus_connection_add_filter(DBusConnection *connection, DBusHandleMes
     _dbus_return_val_if_fail(function != NULL, FALSE);
 
     // 分配并初始化 DBusMessageFilter 结构体
+    // 这个过滤器将被添加到connection->filter_list 列表中
     filter = dbus_new0(DBusMessageFilter, 1);
     if (filter == NULL)
         return FALSE;
