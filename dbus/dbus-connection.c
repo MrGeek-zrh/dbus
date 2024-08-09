@@ -4207,8 +4207,9 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
     _dbus_connection_acquire_dispatch(connection);
     HAVE_LOCK_CHECK(connection);
 
-    // 从连接的消息队列中弹出下一条消息
+    // 从消息队列中弹出一条消息
     message_link = _dbus_connection_pop_message_link_unlocked(connection);
+    // 没有消息了
     if (message_link == NULL) {
         // 其他线程已处理了消息
         _dbus_verbose("another thread dispatched message (during acquire_dispatch above)\n");

@@ -694,6 +694,7 @@ dbus_bool_t dbus_watch_handle(DBusWatch *watch, unsigned int flags)
                       _dbus_pollable_printable(watch->fd));
         return TRUE;
     } else
+        // 这里的回调函数是socket_handle_watch
         return (*watch->handler)(watch, flags, watch->handler_data);
 }
 

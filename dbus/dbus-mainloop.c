@@ -513,6 +513,7 @@ next:
     while (loop->need_dispatch != NULL) {
         // 取出第一个连接进行处理
         // 注意，不是消息，是连接（connection），因为一个connection会接受很多的消息
+        //  每个客户端连接都会创建一个connection
         DBusConnection *connection = _dbus_list_pop_first(&loop->need_dispatch);
 
         while (TRUE) {
@@ -748,6 +749,7 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
     }
 
     // 目前有个疑惑，最开始的那个服务端监控socket在哪里创建的？目前还没找到
+    //  是在first config 里面设置的
     // 先不管这个吧
     // 有新的连接来了？
     if (n_ready > 0) {
@@ -792,6 +794,7 @@ dbus_bool_t _dbus_loop_iterate(DBusLoop *loop, dbus_bool_t block)
             any_oom = FALSE;
 
             // 一个服务端文件描述符可以监视多个客户端的连接,因此需要遍历所有监视器
+            //这里也许说成DBusServer 可以监视多个连接比较好（监视连接到system bus 上的socket 连接)
             // 调用与该文件描述符相关的所有监视器的回调函数
             for (link = _dbus_list_get_first_link(watches); link != NULL; link = next) {
                 DBusWatch *watch = link->data;

@@ -913,6 +913,8 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
 
     // 创建匹配器，用于将消息路由到匹配的接收者。
     // 怎么工作的呢？
+    //  这个就是dbus 的消息路由机制
+    //  主要是用来处理signal 的
     context->matchmaker = bus_matchmaker_new();
     if (context->matchmaker == NULL) {
         BUS_SET_OOM(error);

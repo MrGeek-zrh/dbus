@@ -75,7 +75,6 @@ static void socket_finalize(DBusServer *server)
     _dbus_noncefile_delete(&socket_server->noncefile, NULL);
     dbus_free(server);
 }
-// TODO: 看起来这里就是处理用户的新socket连接请求的位置了
 /* Return value is just for memory, not other failures. */
 /**
  * 处理新的客户端连接并解锁服务器
