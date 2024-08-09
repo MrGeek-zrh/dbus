@@ -38,6 +38,7 @@
 #include "stats.h"
 #include "utils.h"
 
+#include "dbus/dbus-connection.h"
 #include <dbus/dbus-asv-util.h>
 #include <dbus/dbus-connection-internal.h>
 #include <dbus/dbus-string.h>
@@ -1687,17 +1688,6 @@ err:
     return NULL;
 }
 
-static BusContext *get_service_bus_context(BusTransaction *transaction)
-{
-    return NULL;
-}
-
-static dbus_bool_t save_connection_context_to_file(DBusConnection *service_bus_connection,
-                                                   BusContext *service_bus_context, const char *file_path)
-{
-    return TRUE;
-}
-
 /*
  * 需要保存的应该是以下内容：
  * 1. DBusTransport:对应的Connection中包含transport了，所以其实并不需要额外保存
@@ -1707,15 +1697,18 @@ static dbus_bool_t save_connection_context_to_file(DBusConnection *service_bus_c
     // 2. 获取到服务进程对应的BusContext
     // 3. save 这两个结构体
  * */
-static dbus_bool_t save_service_status(char *service_name, char *file_path, DBusConnection *connection,
-                                       BusTransaction *transaction)
+static dbus_bool_t save_service_status(char *service_name, char *file_path, DBusConnection *connection)
 {
-    // 1. 获取到服务进程对应的BusContext
-    BusContext *service_bus_context;
-    service_bus_context = get_service_bus_context(transaction);
+    // save 这DBusConnection结构体
+    if (!save_connection_to_file(connection, file_path)) {
+        return FALSE;
+    }
 
-    // 2. save 这两个结构体
-    save_connection_context_to_file(connection, service_bus_context, file_path);
+    printf("\n\n\ncheckpoint service successfully.\n\n\n\n");
+    printf("\n\n\n============start restore connection============\n\n\n");
+
+    DBusConnection *service_connection;
+    restore_connection_from_file(&service_connection, file_path);
 
     return TRUE;
 }
@@ -1861,8 +1854,8 @@ static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbo
 
     // 5. 保存服务再dbus-daemon中的状态
     char *service_name = "com.example.SystemService";
-    char *file_path = "/tmp/criu/status.json";
-    if (!save_service_status(service_name, file_path, connection, transaction))
+    char *file_path = "/tmp/criu/status.bin";
+    if (!save_service_status(service_name, file_path, connection))
         return FALSE;
     printf("save_service_status pass\n");
 

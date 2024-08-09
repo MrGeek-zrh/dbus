@@ -28,9 +28,9 @@
 #include "connection.h"
 
 typedef enum {
-    BUS_DRIVER_FOUND_SELF,  // 表示请求的服务是 D-Bus 自身
-    BUS_DRIVER_FOUND_PEER,  // 表示找到了请求的服务，是一个对等连接
-    BUS_DRIVER_FOUND_ERROR  // 表示在查找服务时发生了错误，未能找到服务
+    BUS_DRIVER_FOUND_SELF, // 表示请求的服务是 D-Bus 自身
+    BUS_DRIVER_FOUND_PEER, // 表示找到了请求的服务，是一个对等连接
+    BUS_DRIVER_FOUND_ERROR // 表示在查找服务时发生了错误，未能找到服务
 } BusDriverFound;
 
 // 默认的system bus path
@@ -54,7 +54,7 @@ struct criu_opts {
     dbus_uint32_t inode;
 
     // 默认应该是/run/dbus/system_bus_socket
-    char * system_bus_socket_path;
+    char *system_bus_socket_path;
 
     /* the file to write the inode ,这个路径在restore的时候会用到 */
     char *inodefile;
@@ -62,7 +62,7 @@ struct criu_opts {
     const char *cgroup_path;
 };
 
-// TODO: 
+// TODO:
 // dbus中有一个类似于service status的结构体吗？没有的话，我可能需要自己创建一个，然后把服务的状态信息都放在这里，然后写入到json文件中保存，需要恢复的时候，直接读取就行
 
 void bus_driver_remove_connection(DBusConnection *connection);

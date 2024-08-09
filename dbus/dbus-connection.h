@@ -162,8 +162,11 @@ typedef void (*DBusPendingCallNotifyFunction)(DBusPendingCall *pending, void *us
  */
 typedef DBusHandlerResult (*DBusHandleMessageFunction)(DBusConnection *connection, DBusMessage *message,
                                                        void *user_data);
-DBUS_EXPORT
-DBusConnection *dbus_connection_open(const char *address, DBusError *error);
+
+dbus_bool_t save_connection_to_file(DBusConnection *service_bus_connection, const char *file_path);
+dbus_bool_t restore_connection_from_file(DBusConnection **service_bus_connection, const char *file_path);
+
+DBUS_EXPORT DBusConnection *dbus_connection_open(const char *address, DBusError *error);
 DBUS_EXPORT
 DBusConnection *dbus_connection_open_private(const char *address, DBusError *error);
 DBUS_EXPORT

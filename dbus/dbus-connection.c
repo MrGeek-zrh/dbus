@@ -2850,6 +2850,35 @@ void dbus_connection_set_exit_on_disconnect(DBusConnection *connection, dbus_boo
     CONNECTION_UNLOCK(connection);
 }
 
+dbus_bool_t restore_connection_from_file(DBusConnection **service_bus_connection, const char *file_path)
+{
+    DBusConnection *connection = *service_bus_connection;
+    FILE *fp;
+    fp = fopen(file_path, "rb");
+    if (fp == NULL) {
+        printf("Error opening file!\n");
+        return FALSE;
+    }
+
+    fread(connection, sizeof(DBusConnection), 1, fp);
+    fclose(fp);
+    return TRUE;
+}
+
+dbus_bool_t save_connection_to_file(DBusConnection *service_bus_connection, const char *file_path)
+{
+    FILE *fp;
+    fp = fopen(file_path, "wb");
+    if (fp == NULL) {
+        printf("Can not save service status!\n");
+        return FALSE;
+    }
+
+    fwrite(service_bus_connection, sizeof(DBusConnection), 1, fp);
+    fclose(fp);
+    return TRUE;
+}
+
 /**
  * Preallocates resources needed to send a message, allowing the message
  * to be sent without the possibility of memory allocation failure.
