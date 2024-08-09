@@ -356,7 +356,19 @@ struct DBusConnection {
 #if defined(DBUS_ENABLE_CHECKS) || defined(DBUS_ENABLE_ASSERT)
     int generation; /**< _dbus_current_generation that should correspond to this connection 对应于当前连接的 _dbus_current_generation。 */
 #endif
+    dbus_bool_t checkpointed;
 };
+
+void dbus_connection_set_checkpoint_state(DBusConnection **connection, dbus_bool_t state)
+{
+    DBusConnection *conn = *connection;
+    conn->checkpointed = state;
+}
+
+dbus_bool_t dbus_connection_get_checkpoint_state(DBusConnection *connection)
+{
+    return connection->checkpointed;
+}
 
 static DBusDispatchStatus _dbus_connection_get_dispatch_status_unlocked(DBusConnection *connection);
 static void _dbus_connection_update_dispatch_status_and_unlock(DBusConnection *connection,
