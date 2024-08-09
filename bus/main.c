@@ -612,6 +612,7 @@ int main(int argc, char **argv)
     // 初始化错误对象
     dbus_error_init(&error);
     // 创建 BusContext 对象
+    //  这个address 是bus address
     context = bus_context_new(&config_file, flags, &print_addr_pipe, &print_pid_pipe, ready_event_handle,
                               _dbus_string_get_length(&address) > 0 ? &address : NULL, &error);
     _dbus_string_free(&config_file);

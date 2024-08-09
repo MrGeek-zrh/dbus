@@ -84,6 +84,9 @@ struct BusContext {
 
     DBusLoop *loop;
     // 事件循环，用于处理 I/O 事件和定时器。
+    //  当前总线的一切连接都会以事件的形式加入到loop中被监听
+
+    // connections和servers的关系是啥？为啥有了connections还要有servers
 
     DBusList *servers;
     // 服务器列表，包含所有监听连接的服务器。
@@ -511,7 +514,10 @@ static dbus_bool_t process_config_first_time_only(BusContext *context, BusConfig
 
     // 监听地址
     // 这个地址是什么？
+    //这个address 是bus address
     if (address) {
+        //  那么这个server应该是专门来监听连接到system bus 的连接的
+        //难怪是只需要处理一次
         DBusServer *server;
 
         // 开始监听客户端传来的连接
@@ -527,6 +533,7 @@ static dbus_bool_t process_config_first_time_only(BusContext *context, BusConfig
         if (!_dbus_list_append(&context->servers, server))
             goto oom;
     } else {
+        //如果没有指定system bus 链接地址，就用默认的dbus unix socket地址
         addresses = bus_config_parser_get_addresses(parser);
 
         link = _dbus_list_get_first_link(addresses);
@@ -818,7 +825,7 @@ BusContext *bus_context_new(const DBusString *config_file, BusContextFlags flags
     // 初始化 watches_enabled 标志
     context->watches_enabled = TRUE;
 
-    // 创建对象注册表
+    // 创建并初始化服务注册机制
     // TODO
     context->registry = bus_registry_new(context);
     if (context->registry == NULL) {

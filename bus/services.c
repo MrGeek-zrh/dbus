@@ -69,6 +69,16 @@ struct BusRegistry {
     DBusHashTable *service_hash;
     // 哈希表，用于存储已注册的服务。
     // 通过服务名称（字符串）作为键，可以快速查找和访问注册的服务信息。
+    // value 是啥？
+    /* value是service：
+     * struct BusService {
+            int refcount;
+
+            BusRegistry *registry;
+            char *name;
+            DBusList *owners;
+    };
+    */
 
     DBusMemPool *service_pool;
     // 内存池，用于高效地分配和管理 BusService 结构体的内存。

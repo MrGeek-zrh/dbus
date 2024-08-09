@@ -51,6 +51,7 @@ struct DBusServerVTable {
 /**
  * @ingroup DBusServerInternals
  * Internals of DBusServer object
+ * DBusServer这个实际上就是用来监听总线上的连接的，比如，system bus 总线上就有对应的server,  专门监听客户端的连接
  */
 struct DBusServer {
     DBusAtomic refcount; /**< Reference count. 用于跟踪 DBusServer 对象的引用次数。 */
