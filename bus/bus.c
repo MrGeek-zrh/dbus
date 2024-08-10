@@ -87,6 +87,8 @@ struct BusContext {
     //  当前总线的一切连接都会以事件的形式加入到loop中被监听
 
     // connections和servers的关系是啥？为啥有了connections还要有servers
+    // servers是用来监听总线上的连接的，connection代表的是一个个具体连接
+    // 更进一步，server用来创建连接，connection就是被创建的连接
 
     DBusList *servers;
     // 服务器列表，包含所有监听连接的服务器。

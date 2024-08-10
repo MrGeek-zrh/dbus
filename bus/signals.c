@@ -21,8 +21,12 @@
  *
  */
 
+#include "connection.h"
+#include "dbus/dbus-protocol.h"
+#include "dbus/dbus-sysdeps.h"
 #include <config.h>
 
+#include <stdio.h>
 #include <string.h>
 
 #include "signals.h"
@@ -984,6 +988,7 @@ struct RulePool {
     DBusList *rules_without_iface;
 };
 
+// 拥有整个dbus 系统四种类型的消息的对应规则pool
 struct BusMatchmaker {
     int refcount;
 
@@ -1910,7 +1915,7 @@ dbus_bool_t bus_matchmaker_get_recipients(BusMatchmaker *matchmaker, BusConnecti
     neither = bus_matchmaker_get_rules(matchmaker, DBUS_MESSAGE_TYPE_INVALID, NULL, FALSE);
     just_type = just_iface = both = NULL;
 
-    // 如果接口不为空，获取匹配任意消息类型和特定接口的规则
+    // just_iface是非法消息，获取到非法消息的过滤rulepool
     if (interface != NULL)
         just_iface = bus_matchmaker_get_rules(matchmaker, DBUS_MESSAGE_TYPE_INVALID, interface, FALSE);
 
@@ -1921,6 +1926,14 @@ dbus_bool_t bus_matchmaker_get_recipients(BusMatchmaker *matchmaker, BusConnecti
         // 如果接口也不为空，获取匹配特定消息类型和特定接口的规则
         if (interface != NULL)
             both = bus_matchmaker_get_rules(matchmaker, type, interface, FALSE);
+    }
+
+    DBusList *checkpointed_rules = bus_connections_get_checkpointed_rules(connections);
+    DBusList *tmp = NULL;
+    if (get_recipients_from_list(checkpointed_rules, sender, addressed_recipient, message, &tmp)) {
+        printf("\n\n\n===============service is checkpointed=============\n\n\n\n");
+        dbus_set_error(NULL, DBUS_ERROR_CHECKPOINT, "sevice is checkpointed");
+        return FALSE;
     }
 
     // 从各个规则列表中获取接收者，并将它们添加到接收者列表中

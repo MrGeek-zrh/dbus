@@ -359,11 +359,7 @@ struct DBusConnection {
     dbus_bool_t checkpointed;
 };
 
-void dbus_connection_set_checkpoint_state(DBusConnection **connection, dbus_bool_t state)
-{
-    DBusConnection *conn = *connection;
-    conn->checkpointed = state;
-}
+void dbus_connection_set_checkpoint_state(DBusConnection *connection, dbus_bool_t state) {};
 
 dbus_bool_t dbus_connection_get_checkpoint_state(DBusConnection *connection)
 {
@@ -2864,7 +2860,7 @@ void dbus_connection_set_exit_on_disconnect(DBusConnection *connection, dbus_boo
 
 dbus_bool_t restore_connection_from_file(DBusConnection **service_bus_connection, const char *file_path)
 {
-    DBusConnection *connection = *service_bus_connection;
+    DBusConnection *connection = dbus_new0(DBusConnection, 1);
     FILE *fp;
     fp = fopen(file_path, "rb");
     if (fp == NULL) {
@@ -2872,8 +2868,9 @@ dbus_bool_t restore_connection_from_file(DBusConnection **service_bus_connection
         return FALSE;
     }
 
-    fread(connection, sizeof(DBusConnection), 1, fp);
+    fread(connection, sizeof(struct DBusConnection), 1, fp);
     fclose(fp);
+    *service_bus_connection = connection;
     return TRUE;
 }
 
@@ -4387,6 +4384,7 @@ DBusDispatchStatus dbus_connection_dispatch(DBusConnection *connection)
         // TODO:
         _dbus_verbose("  running filter on message %p\n", message);
         // 这个filter->data我觉得就是放过滤器回掉函数的处理结果数据的
+        // bus_dispatch
         result = (*filter->function)(connection, message, filter->user_data);
 
         if (result != DBUS_HANDLER_RESULT_NOT_YET_HANDLED)

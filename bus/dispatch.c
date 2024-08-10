@@ -246,6 +246,8 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
     }
 
     // 获取消息的目的服务名称
+    // destination就是bus name
+    // sevice就是通过bus name定位到的
     service_name = dbus_message_get_destination(message);
 
 #ifdef DBUS_ENABLE_VERBOSE_MODE
@@ -285,6 +287,7 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
     }
 
     // 为消息分配发送者
+    // connection->name是null，就认为当前connection不再活跃了
     if (bus_connection_is_active(connection)) {
         // TODO:这个sender是客户端的名称吗？
         sender = bus_connection_get_name(connection);
@@ -295,7 +298,7 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
             goto out;
         }
     } else {
-        // 如果连接未激活，将发送者设置为 :not.active.yet
+        // 如果连接不再处于active状态
         if (!dbus_message_set_sender(message, ":not.active.yet")) {
             BUS_SET_OOM(&error);
             goto out;
@@ -303,17 +306,26 @@ static DBusHandlerResult bus_dispatch(DBusConnection *connection, DBusMessage *m
     }
 
     // 重新获取服务名称，因为设置发送者可能会导致消息头重新分配
+    // destination就是bus name
     service_name = dbus_message_get_destination(message);
 
     // 处理发送到 bus driver 的消息
     // org.freedesktop.DBus service
     // service中有多个object，object中有多个interface，interface中有多个properties、method、signal
     // 提供服务的服务进程通过system bus，向dbus-daemon注册服务
+    // 如果请求的是dbus 自己，也就是自带的服务
+    // 所以这里也需要判断一下，如果请求的服务已经被checkpointed了，应该报错
+    // 我目前需要处理的应该只会在这里
     if (service_name && strcmp(service_name, DBUS_SERVICE_DBUS) == 0) {
         if (!bus_transaction_capture(transaction, connection, NULL, message)) {
             BUS_SET_OOM(&error);
             goto out;
         }
+
+        // 回到这里，说明通过前面的bus_transaction_capture转发消息失败了
+        printf("离开了bus_transaction_capture");
+        printf("会到这里，说明通过前面的bus_transaction_capture转发消息失败了");
+        //  但是换句话说，当application呗checkpoint而断开的时候，connection似乎自动被销毁了？不然为啥bus_transaction_capture捕获不到connection？
 
         if (!bus_context_check_security_policy(context, transaction, connection, NULL, NULL, message, NULL, &error)) {
             _dbus_verbose("Security policy rejected message\n");

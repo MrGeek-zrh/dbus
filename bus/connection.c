@@ -21,6 +21,8 @@
  *
  */
 
+#include "bus.h"
+#include "dbus/dbus-sysdeps.h"
 #include <config.h>
 #include "connection.h"
 
@@ -38,6 +40,7 @@
 #include <dbus/dbus-timeout.h>
 #include <dbus/dbus-connection-internal.h>
 #include <dbus/dbus-internals.h>
+#include <stdio.h>
 
 /* Trim executed commands to this length; we want to keep logs readable */
 #define MAX_LOG_COMMAND_LEN 50
@@ -89,9 +92,11 @@ struct BusConnections {
 
     DBusList *monitors;
     /**< 监控连接的列表，是已完成连接的子集，每个成员都是一个 #DBusConnection */
+    // TODO:
 
     BusMatchmaker *monitor_matchmaker;
     /**< 用于监控的匹配器 */
+    // 这里拥有当前系统的所有matchrules
 
 #ifdef DBUS_ENABLE_STATS
     int total_match_rules;
@@ -112,7 +117,16 @@ struct BusConnections {
     int peak_bus_names_per_conn;
     /**< 每个连接的总线名称峰值数量 */
 #endif
+
+    // list of checkpointed connection rule
+    DBusList *checkpointed_rules;
+    int n_checkpointed;
 };
+
+DBusList *bus_connections_get_checkpointed_rules(BusConnections *connections)
+{
+    return connections->checkpointed_rules;
+}
 
 static dbus_int32_t connection_data_slot = -1;
 
@@ -2086,6 +2100,22 @@ BusContext *bus_transaction_get_context(BusTransaction *transaction)
     return transaction->context;
 }
 
+// 将需要被checkpoint的connection的matchrule添加到connections中的checkpointed_rules
+void add_connection_to_checkpointed_list(DBusConnection *connection, BusTransaction *transaction)
+{
+    BusConnectionData *d = BUS_CONNECTION_DATA(connection);
+    DBusList *rules = d->match_rules;
+
+    BusConnections *connections = bus_context_get_connections(transaction->context);
+    DBusList *checkpointed_rules = connections->checkpointed_rules;
+
+    DBusList *link;
+    for (link = _dbus_list_get_first_link(&rules); link != NULL; link = _dbus_list_get_next_link(&rules, link)) {
+        _dbus_list_append_link(&checkpointed_rules, link);
+    }
+    connections->n_checkpointed++;
+}
+
 /**
  * Reserve enough memory to capture the given message if the
  * transaction goes through.
@@ -2102,6 +2132,7 @@ BusContext *bus_transaction_get_context(BusTransaction *transaction)
  * 函数的作用是捕获并处理总线事务中的消息，根据是否有监视器决定是否需要处理消息。
  * 如果有监视器，则将消息发送给所有匹配的接收者。
  */
+// TODO:这个就是处理消息的地方了
 dbus_bool_t bus_transaction_capture(BusTransaction *transaction, DBusConnection *sender,
                                     DBusConnection *addressed_recipient, DBusMessage *message)
 {
@@ -2129,7 +2160,10 @@ dbus_bool_t bus_transaction_capture(BusTransaction *transaction, DBusConnection 
     if (!bus_matchmaker_get_recipients(mm, connections, sender, addressed_recipient, message, &recipients))
         goto out;
 
+    DBusError error = DBUS_ERROR_INIT;
+
     // 遍历接收者列表，并将消息发送给每个接收者
+    //  接受者列表可能是空的，所以也不一定就是会通过这里进下转发
     for (link = _dbus_list_get_first_link(&recipients); link != NULL;
          link = _dbus_list_get_next_link(&recipients, link)) {
         DBusConnection *recipient = link->data;
@@ -2145,6 +2179,7 @@ dbus_bool_t bus_transaction_capture(BusTransaction *transaction, DBusConnection 
 out:
     // 清理接收者列表
     _dbus_list_clear(&recipients);
+    dbus_error_free(&error);
     return ret;
 }
 

@@ -164,7 +164,7 @@ typedef DBusHandlerResult (*DBusHandleMessageFunction)(DBusConnection *connectio
                                                        void *user_data);
 
 dbus_bool_t dbus_connection_get_checkpoint_state(DBusConnection *connection);
-void dbus_connection_set_checkpoint_state(DBusConnection **connection, dbus_bool_t state);
+void dbus_connection_set_checkpoint_state(DBusConnection *connection, dbus_bool_t state);
 dbus_bool_t save_connection_to_file(DBusConnection *service_bus_connection, const char *file_path);
 dbus_bool_t restore_connection_from_file(DBusConnection **service_bus_connection, const char *file_path);
 

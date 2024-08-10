@@ -1817,11 +1817,6 @@ static dbus_uint32_t getinode(dbus_pid_t pid)
     return inode;
 }
 
-static void set_connection_checkpoint_state(DBusConnection **connection)
-{
-    dbus_connection_set_checkpoint_state(connection, TRUE);
-}
-
 /*
 // 1. 检查系统是否支持criu
 // 3. 创建必要的文件/文件夹
@@ -1866,9 +1861,9 @@ static dbus_bool_t checkpoint(dbus_pid_t pid, char *directory, dbus_bool_t verbo
 
     // 6. 使用exec执行criu指令
     // 进行checkpoint的时候需要将inode编号保存到文件中，这样在restore的时候才能找到对应的inode
+    add_connection_to_checkpointed_list(connection, transaction);
     if (!exec_criu(argv))
         return FALSE;
-    set_connection_checkpoint_state(&connection);
     return TRUE;
 }
 
